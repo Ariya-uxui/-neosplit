@@ -10,10 +10,7 @@ function Bills({ setPage, tripBills = [], setSelectedBill }) {
     return "🧾";
   };
 
-  const normalizeBill = (bill) => {
-    const sharedBy = Array.isArray(bill.sharedBy) ? bill.sharedBy : [];
-    const peopleCount =
-      sharedBy.length || Number(bill.pax) || Number(bill.people) || 1;
+ 
 
     return {
       ...bill,
@@ -93,6 +90,5 @@ function Bills({ setPage, tripBills = [], setSelectedBill }) {
       )}
     </div>
   );
-}
 
 export default Bills;
