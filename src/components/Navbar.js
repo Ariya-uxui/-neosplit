@@ -6,7 +6,7 @@ function Navbar({ setPage, page }) {
     <div className="glass-nav">
       <div
         className={`nav-item ${page === "home" ? "nav-item-active" : ""}`}
-        onClick={() => setPage("home")}
+        onClick={() => setPage && setPage("home")}
       >
         <span>🏠</span>
         Home
@@ -14,7 +14,7 @@ function Navbar({ setPage, page }) {
 
       <div
         className={`nav-item ${page === "receipt" ? "nav-item-active" : ""}`}
-        onClick={() => setPage("receipt")}
+        onClick={() => setPage && setPage("receipt")}
       >
         <span>🧾</span>
         receipt
@@ -22,7 +22,7 @@ function Navbar({ setPage, page }) {
 
       <div
         className={`nav-item ${page === "trophy" || page === "leaderboard" || page === "mypoints" || page === "rewardslist" || page === "yourredeem" ? "nav-item-active" : ""}`}
-        onClick={() => setPage("trophy")}
+        onClick={() => setPage && setPage("trophy")}
       >
         <span>🏆</span>
         Trophy
@@ -30,7 +30,7 @@ function Navbar({ setPage, page }) {
 
       <div
         className={`nav-item ${page === "profile" ? "nav-item-active" : ""}`}
-        onClick={() => setPage("profile")}
+        onClick={() => setPage && setPage("profile")}
       >
         <span>👤</span>
         profile

@@ -28,6 +28,14 @@ function TripDetail({ setPage, tripBills, deleteExpense, startEditExpense }) {
           <div className="trip-total-badge">{total} THB</div>
         </div>
 
+         <div className="trip-bill-amount">
+  {Number(bill.amount || 0).toLocaleString()} THB
+</div>
+
+<div className="trip-total-badge">
+  {Number(total || 0).toLocaleString()} THB
+</div>
+
         {tripBills.length === 0 ? (
           <div className="white-panel center mt-16">
             <div style={{ fontWeight: 700, marginBottom: 8 }}>No expenses yet</div>

@@ -21,6 +21,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [] }) {
 
     if (!name.trim() || !amount || sharedBy.length === 0) return;
 
+    // ✅ ส่งไปให้ App จัดการ
     addExpense({
       name,
       amount: Number(amount),
@@ -54,7 +55,6 @@ function AddExpense({ setPage, addExpense, tripMembers = [] }) {
           type="number"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          placeholder="Enter total amount"
         />
 
         <label className="input-label">Paid By</label>

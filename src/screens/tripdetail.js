@@ -2,7 +2,7 @@ import React from "react";
 import "../App.css";
 import ExpenseChart from "../components/ExpenseChart";
 
-function TripDetail({ setPage, tripBills, deleteExpense, startEditExpense }) {
+function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense }) {
   const total = tripBills.reduce(
     (sum, bill) => sum + (Number(bill.amount) || 0),
     0
@@ -18,7 +18,7 @@ function TripDetail({ setPage, tripBills, deleteExpense, startEditExpense }) {
   };
 
   return (
-    <div className="screen-green">
+    <div className="screen-green tripdetail-screen">
       <div className="top-pill-green">Bills Details</div>
 
       <div className="glass-summary-card">
@@ -28,7 +28,9 @@ function TripDetail({ setPage, tripBills, deleteExpense, startEditExpense }) {
             <div className="trip-summary-title">NCT127 in KR</div>
           </div>
 
-          <div className="trip-total-badge">{total} THB</div>
+          <div className="trip-total-badge">
+            {Number(total || 0).toLocaleString()} THB
+          </div>
         </div>
 
         {tripBills.length === 0 ? (
@@ -41,59 +43,76 @@ function TripDetail({ setPage, tripBills, deleteExpense, startEditExpense }) {
             </div>
           </div>
         ) : (
-          tripBills.map((bill) => (
-            <div key={bill.id} className="trip-bill-row">
-              <div className="trip-bill-left">
-                <div className="trip-bill-icon">
-                  {getCategoryIcon(bill.category)}
+          tripBills.map((bill, index) => {
+            const people = bill.sharedBy?.length || bill.pax || 1;
+            const eachPerson =
+              people > 0 ? (Number(bill.amount || 0) / people).toFixed(2) : "0.00";
+
+            return (
+              <div
+                key={bill.id || `${bill.name}-${index}`}
+                className="trip-bill-row"
+              >
+                <div className="trip-bill-left">
+                  <div className="trip-bill-icon">
+                    {getCategoryIcon(bill.category)}
+                  </div>
+
+                  <div className="trip-bill-content">
+                    <div className="trip-bill-name">{bill.name}</div>
+                    <div className="category-badge">{bill.category}</div>
+
+                    <div className="trip-bill-meta">
+                      Paid by {bill.paidBy} • {people} pax
+                    </div>
+
+                    <div className="trip-bill-share">
+                      Each person: {eachPerson} THB
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <div className="trip-bill-name">{bill.name}</div>
-                  <div className="category-badge">{bill.category}</div>
-                  <div className="trip-bill-meta">
-                    Paid by {bill.paidBy} •{" "}
-                    {bill.sharedBy?.length || bill.pax || 1} pax
+                <div className="trip-bill-right">
+                  <div className="trip-bill-amount">
+                    {Number(bill.amount || 0).toLocaleString()} THB
+                  </div>
+
+                  <div className="trip-bill-actions">
+                    <button
+                      type="button"
+                      onClick={() => startEditExpense(bill)}
+                      className="small-btn"
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => deleteExpense(bill.id)}
+                      className="small-btn-dark"
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
               </div>
-
-              <div className="trip-bill-right">
-                <div className="trip-bill-amount">{bill.amount} THB</div>
-
-                <div className="trip-bill-actions">
-                  <button
-                    type="button"
-                    onClick={() => startEditExpense(bill)}
-                    className="small-btn"
-                  >
-                    edit
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => deleteExpense(bill.id)}
-                    className="small-btn-dark"
-                  >
-                    delete
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
 
         <div className="trip-total-footer">
           <div>Total Trip Expense</div>
-          <div>{total} THB</div>
+          <div>{Number(total || 0).toLocaleString()} THB</div>
         </div>
       </div>
 
-      <ExpenseChart tripBills={tripBills} />
+      <div className="tripdetail-chart-wrap">
+        <ExpenseChart tripBills={tripBills} />
+      </div>
 
       <button
         type="button"
-        className="btn-gray mt-16"
+        className="tripdetail-secondary-btn mt-16"
         onClick={() => setPage("addexpense")}
       >
         + Add Expense
@@ -101,7 +120,7 @@ function TripDetail({ setPage, tripBills, deleteExpense, startEditExpense }) {
 
       <button
         type="button"
-        className="btn-black mt-12"
+        className="tripdetail-primary-btn mt-12"
         onClick={() => setPage("settlement")}
       >
         Settlement

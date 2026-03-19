@@ -21,6 +21,28 @@ import Splash from "./screens/Splash";
 import EditExpense from "./screens/editexpense";
 import BillDetail from "./screens/billdetail";
 
+
+const normalizeBill = (bill) => {
+  const sharedBy = Array.isArray(bill.sharedBy) ? bill.sharedBy : [];
+  const peopleCount =
+    sharedBy.length || Number(bill.pax) || Number(bill.people) || 1;
+
+  return {
+    ...bill,
+    id: bill.id || Date.now(),
+    name: bill.name || bill.title || "Untitled",
+    title: bill.title || bill.name || "Untitled",
+    amount: Number(bill.amount) || 0,
+    paidBy: bill.paidBy || "",
+    category: bill.category || "Other",
+    sharedBy,
+    pax: peopleCount,
+    people: peopleCount,
+    status: bill.status || "Pending",
+    date: bill.date || "Recently added",
+  };
+};
+
 function App() {
 
   
@@ -33,45 +55,48 @@ function App() {
   const [selectedBill, setSelectedBill] = useState(null);
 
   const [tripBills, setTripBills] = useState(() => {
-    const savedBills = localStorage.getItem("tripBills");
-    return savedBills
-      ? JSON.parse(savedBills)
-      : [
-          {
-            id: 1,
-            name: "Lunch at Fuji",
-            amount: 1250,
-            paidBy: "NongTaeyoung",
-            pax: 4,
-            category: "Food",
-            date: "10/11/2024",
-            status: "Pending",
-            sharedBy: ["NongTaeyoung", "Malikab", "Ariya", "Johnny"],
-          },
-          {
-            id: 2,
-            name: "Concert Ticket",
-            amount: 6900,
-            paidBy: "Malikab",
-            pax: 3,
-            category: "Ticket",
-            date: "09/11/2024",
-            status: "Pending",
-            sharedBy: ["NongTaeyoung", "Malikab", "Ariya"],
-          },
-          {
-            id: 3,
-            name: "Grab",
-            amount: 250,
-            paidBy: "Malikab",
-            pax: 3,
-            category: "Transport",
-            date: "25/05/2024",
-            status: "Pending",
-            sharedBy: ["NongTaeyoung", "Malikab", "Ariya"],
-          },
-        ];
-  });
+  const savedBills = localStorage.getItem("tripBills");
+
+  const initialBills = savedBills
+    ? JSON.parse(savedBills)
+    : [
+        {
+          id: 1,
+          name: "Lunch at Fuji",
+          amount: 1250,
+          paidBy: "NongTaeyoung",
+          pax: 4,
+          category: "Food",
+          date: "10/11/2024",
+          status: "Pending",
+          sharedBy: ["NongTaeyoung", "Malikab", "Ariya", "Johnny"],
+        },
+        {
+          id: 2,
+          name: "Concert Ticket",
+          amount: 6900,
+          paidBy: "Malikab",
+          pax: 3,
+          category: "Ticket",
+          date: "09/11/2024",
+          status: "Pending",
+          sharedBy: ["NongTaeyoung", "Malikab", "Ariya"],
+        },
+        {
+          id: 3,
+          name: "Grab",
+          amount: 250,
+          paidBy: "Malikab",
+          pax: 3,
+          category: "Transport",
+          date: "25/05/2024",
+          status: "Pending",
+          sharedBy: ["NongTaeyoung", "Malikab", "Ariya"],
+        },
+      ];
+
+  return initialBills.map(normalizeBill);
+});
 
   const [userProfile, setUserProfile] = useState(() => {
   const savedProfile = localStorage.getItem("neosplitProfile");
@@ -83,6 +108,7 @@ function App() {
         profileImage:
           "https://i.pinimg.com/736x/0b/11/d4/0b11d44290e5c34a8ebf40c4d58bde8f.jpg",
       };
+      
 });
 
   const [trips, setTrips] = useState(() => {
@@ -213,6 +239,8 @@ const renderPage = () => {
     />
   );
 }
+
+
    
 
     if (page === "create") {
