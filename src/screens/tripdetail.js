@@ -1,132 +1,168 @@
 import React from "react";
 import "../App.css";
 import ExpenseChart from "../components/ExpenseChart";
-
+ 
 function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense }) {
-  const total = tripBills.reduce(
-    (sum, bill) => sum + (Number(bill.amount) || 0),
-    0
-  );
-
-  const getCategoryIcon = (category) => {
-    if (category === "Food") return "🍜";
-    if (category === "Hotel") return "🏨";
-    if (category === "Transport") return "🚕";
-    if (category === "Ticket") return "🎫";
-    if (category === "Merch") return "🛍️";
-    return "💸";
-  };
-
+  const total = tripBills.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
+ 
+  const getCategoryIcon = (cat) =>
+    ({ Food:"🍜", Hotel:"🏨", Transport:"🚕", Travel:"🚕", Ticket:"🎫", Merch:"🛍️" }[cat] || "💸");
+ 
+  const getCategoryColor = (cat) =>
+    ({ Food:"#FF6B35", Ticket:"#00FF85", Transport:"#FFD400", Travel:"#FFD400", Merch:"#FF3B5C", Hotel:"#8B5CF6" }[cat] || "#6B7280");
+ 
+  // Category breakdown for mini chart
+  const catMap = {};
+  tripBills.forEach((b) => {
+    catMap[b.category] = (catMap[b.category] || 0) + (Number(b.amount) || 0);
+  });
+  const cats = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
+ 
   return (
-    <div className="screen-green tripdetail-screen">
-      <div className="top-pill-green">Bills Details</div>
-
-      <div className="glass-summary-card">
-        <div className="trip-summary-header">
-          <div>
-            <div className="trip-summary-label">Trip</div>
-            <div className="trip-summary-title">NCT127 in KR</div>
-          </div>
-
-          <div className="trip-total-badge">
-            {Number(total || 0).toLocaleString()} THB
-          </div>
+    <div className="ns-screen">
+ 
+      {/* ── Header ── */}
+      <div className="ns-page-header">
+        <button className="ns-back-btn" onClick={() => setPage("home")}>‹</button>
+        <span className="ns-title">Bills Detail</span>
+        <button
+          className="ns-btn ns-btn-primary"
+          style={{ width: "auto", padding: "8px 16px", fontSize: 13 }}
+          onClick={() => setPage("addexpense")}
+        >
+          + Add
+        </button>
+      </div>
+ 
+      {/* ── Summary card ── */}
+      <div className="ns-card" style={{
+        background: "linear-gradient(135deg, rgba(0,255,133,0.1), rgba(0,255,133,0.03))",
+        border: "1px solid rgba(0,255,133,0.2)",
+        marginBottom: 14,
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(0,255,133,0.7)", marginBottom: 6 }}>
+          NCT127 Bangkok Concert
         </div>
-
-        {tripBills.length === 0 ? (
-          <div className="white-panel center mt-16">
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>
-              No expenses yet
-            </div>
-            <div style={{ fontSize: 14 }}>
-              Add your first expense to get started
-            </div>
-          </div>
-        ) : (
-          tripBills.map((bill, index) => {
-            const people = bill.sharedBy?.length || bill.pax || 1;
-            const eachPerson =
-              people > 0 ? (Number(bill.amount || 0) / people).toFixed(2) : "0.00";
-
-            return (
-              <div
-                key={bill.id || `${bill.name}-${index}`}
-                className="trip-bill-row"
-              >
-                <div className="trip-bill-left">
-                  <div className="trip-bill-icon">
-                    {getCategoryIcon(bill.category)}
-                  </div>
-
-                  <div className="trip-bill-content">
-                    <div className="trip-bill-name">{bill.name}</div>
-                    <div className="category-badge">{bill.category}</div>
-
-                    <div className="trip-bill-meta">
-                      Paid by {bill.paidBy} • {people} pax
-                    </div>
-
-                    <div className="trip-bill-share">
-                      Each person: {eachPerson} THB
-                    </div>
-                  </div>
+        <div style={{ fontFamily: "var(--ns-syne)", fontSize: 34, fontWeight: 800, color: "var(--ns-g)", letterSpacing: "-1px", lineHeight: 1 }}>
+          {total.toLocaleString()}
+          <span style={{ fontSize: 16, color: "var(--ns-muted)", marginLeft: 6 }}>THB</span>
+        </div>
+        <div style={{ fontSize: 12, color: "var(--ns-muted)", marginTop: 5 }}>
+          {tripBills.length} expenses · {tripBills.filter(b => b.status !== "Finished").length} pending
+        </div>
+      </div>
+ 
+      {/* ── Category breakdown ── */}
+      {cats.length > 0 && (
+        <div className="ns-card" style={{ marginBottom: 14 }}>
+          <div className="ns-section-label" style={{ margin: "0 0 12px" }}>Category Breakdown</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {cats.map(([cat, amt]) => (
+              <div key={cat} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ fontSize: 13, color: "var(--ns-text2)", width: 80, flexShrink: 0 }}>
+                  {getCategoryIcon(cat)} {cat}
                 </div>
-
-                <div className="trip-bill-right">
-                  <div className="trip-bill-amount">
-                    {Number(bill.amount || 0).toLocaleString()} THB
-                  </div>
-
-                  <div className="trip-bill-actions">
-                    <button
-                      type="button"
-                      onClick={() => startEditExpense(bill)}
-                      className="small-btn"
-                    >
-                      Edit
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => deleteExpense(bill.id)}
-                      className="small-btn-dark"
-                    >
-                      Delete
-                    </button>
-                  </div>
+                <div style={{ flex: 1, height: 6, background: "rgba(255,255,255,0.05)", borderRadius: 100, overflow: "hidden" }}>
+                  <div style={{ height: "100%", borderRadius: 100, background: getCategoryColor(cat), width: `${(amt / total * 100).toFixed(0)}%`, transition: "width 0.6s ease" }} />
+                </div>
+                <div style={{ fontSize: 11, color: "var(--ns-muted)", width: 32, textAlign: "right" }}>
+                  {(amt / total * 100).toFixed(0)}%
                 </div>
               </div>
-            );
-          })
-        )}
-
-        <div className="trip-total-footer">
-          <div>Total Trip Expense</div>
-          <div>{Number(total || 0).toLocaleString()} THB</div>
+            ))}
+          </div>
         </div>
-      </div>
-
-      <div className="tripdetail-chart-wrap">
-        <ExpenseChart tripBills={tripBills} />
-      </div>
-
-      <button
-        type="button"
-        className="tripdetail-secondary-btn mt-16"
-        onClick={() => setPage("addexpense")}
-      >
-        + Add Expense
-      </button>
-
-      <button
-        type="button"
-        className="tripdetail-primary-btn mt-12"
-        onClick={() => setPage("settlement")}
-      >
-        Settlement
+      )}
+ 
+      {/* ── ExpenseChart ── */}
+      {tripBills.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <ExpenseChart tripBills={tripBills} />
+        </div>
+      )}
+ 
+      {/* ── Bills list ── */}
+      <div className="ns-section-label">All Expenses</div>
+ 
+      {tripBills.length === 0 ? (
+        <div className="ns-card" style={{ textAlign: "center", padding: 32, color: "var(--ns-muted)" }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>📋</div>
+          <div style={{ fontWeight: 700, color: "var(--ns-text)", marginBottom: 4 }}>No expenses yet</div>
+          <div style={{ fontSize: 13 }}>Add your first expense to get started</div>
+        </div>
+      ) : (
+        tripBills.map((bill, index) => {
+          const people = bill.sharedBy?.length || bill.pax || 1;
+          const each = people > 0 ? (Number(bill.amount || 0) / people).toFixed(2) : "0.00";
+          const isFinished = bill.status === "Finished";
+ 
+          return (
+            <div
+              key={bill.id || `${bill.name}-${index}`}
+              className="ns-card"
+              style={{ animationDelay: `${index * 0.05}s`, animation: "cardUp 0.3s ease" }}
+            >
+              {/* Top */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                  <div style={{ fontSize: 20, width: 38, height: 38, background: "rgba(255,255,255,0.04)", borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    {getCategoryIcon(bill.category)}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ns-text)", marginBottom: 4 }}>{bill.name}</div>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 100, background: "rgba(255,255,255,0.06)", color: "var(--ns-text2)", border: "1px solid var(--ns-border)" }}>
+                      {bill.category}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontFamily: "var(--ns-syne)", fontSize: 16, fontWeight: 800, color: "var(--ns-y)" }}>
+                    {Number(bill.amount || 0).toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--ns-muted)" }}>THB</div>
+                </div>
+              </div>
+ 
+              {/* Meta */}
+              <div style={{ fontSize: 12, color: "var(--ns-muted)", marginBottom: 6 }}>
+                Paid by {bill.paidBy} · {people} pax · {each} THB/person
+              </div>
+ 
+              {/* Status + Actions */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span className={`ns-badge ${isFinished ? "ns-badge-green" : "ns-badge-yellow"}`}>
+                  {isFinished ? "✅ Settled" : "⏳ Pending"}
+                </span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    className="ns-btn ns-btn-dark"
+                    style={{ width: "auto", padding: "7px 14px", fontSize: 12 }}
+                    onClick={() => startEditExpense(bill)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="ns-btn"
+                    style={{ width: "auto", padding: "7px 14px", fontSize: 12, background: "rgba(255,59,92,0.1)", color: "var(--ns-r)", border: "1px solid rgba(255,59,92,0.2)" }}
+                    onClick={() => deleteExpense(bill.id)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })
+      )}
+ 
+      {/* ── Actions ── */}
+      <button className="ns-btn ns-btn-primary" style={{ marginTop: 8 }} onClick={() => setPage("settlement")}>
+        Go to Settlement →
       </button>
     </div>
   );
 }
-
+ 
 export default TripDetail;

@@ -1,42 +1,57 @@
 import React from "react";
 import "../App.css";
-
+ 
+const NAV_ITEMS = [
+  {
+    id: "home",
+    icon: "🏠",
+    label: "Home",
+    match: ["home"],
+  },
+  {
+    id: "receipt",
+    icon: "📋",
+    label: "Bills",
+    match: ["receipt", "billhistory", "billdetail", "addexpense", "editexpense"],
+  },
+  {
+    id: "settlement",
+    icon: "⚖️",
+    label: "Split",
+    match: ["settlement", "splitbill", "splitcalculator", "tripdetail"],
+  },
+  {
+    id: "trophy",
+    icon: "🏆",
+    label: "Ranks",
+    match: ["trophy", "leaderboard", "mypoints", "rewardslist", "yourredeem"],
+  },
+  {
+    id: "profile",
+    icon: "👤",
+    label: "Profile",
+    match: ["profile"],
+  },
+];
+ 
 function Navbar({ setPage, page }) {
   return (
-    <div className="glass-nav">
-      <div
-        className={`nav-item ${page === "home" ? "nav-item-active" : ""}`}
-        onClick={() => setPage && setPage("home")}
-      >
-        <span>🏠</span>
-        Home
-      </div>
-
-      <div
-        className={`nav-item ${page === "receipt" ? "nav-item-active" : ""}`}
-        onClick={() => setPage && setPage("receipt")}
-      >
-        <span>🧾</span>
-        receipt
-      </div>
-
-      <div
-        className={`nav-item ${page === "trophy" || page === "leaderboard" || page === "mypoints" || page === "rewardslist" || page === "yourredeem" ? "nav-item-active" : ""}`}
-        onClick={() => setPage && setPage("trophy")}
-      >
-        <span>🏆</span>
-        Trophy
-      </div>
-
-      <div
-        className={`nav-item ${page === "profile" ? "nav-item-active" : ""}`}
-        onClick={() => setPage && setPage("profile")}
-      >
-        <span>👤</span>
-        profile
-      </div>
+    <div className="ns-navbar">
+      {NAV_ITEMS.map((item) => {
+        const isActive = item.match.includes(page);
+        return (
+          <button
+            key={item.id}
+            className={`ns-nav-item ${isActive ? "ns-nav-active" : ""}`}
+            onClick={() => setPage && setPage(item.id)}
+          >
+            <span className="ns-nav-icon">{item.icon}</span>
+            <span className="ns-nav-label">{item.label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
-
+ 
 export default Navbar;
