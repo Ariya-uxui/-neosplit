@@ -3,7 +3,6 @@ import "../App.css";
  
 function BillDetail({ setPage, selectedBill, markBillAsSettled }) {
  
-  // ── Guard ──
   if (!selectedBill) {
     return (
       <div className="ns-screen">
@@ -16,9 +15,7 @@ function BillDetail({ setPage, selectedBill, markBillAsSettled }) {
           <div style={{ fontSize: 36, marginBottom: 10 }}>📋</div>
           <div style={{ fontWeight: 700, color: "var(--ns-text)" }}>No bill selected</div>
         </div>
-        <button className="ns-btn ns-btn-ghost" onClick={() => setPage("receipt")}>
-          ← Back to Bills
-        </button>
+        <button className="ns-btn ns-btn-ghost" onClick={() => setPage("receipt")}>← Back to Bills</button>
       </div>
     );
   }
@@ -26,16 +23,13 @@ function BillDetail({ setPage, selectedBill, markBillAsSettled }) {
   const getIcon = (cat) =>
     ({ Food:"🍜", Ticket:"🎫", Transport:"🚕", Travel:"🚕", Merch:"🛍️", Hotel:"🏨" }[cat] || "🧾");
  
-  // Normalize — รองรับทั้ง .name / .title, sharedBy / pax / people
-  const title  = selectedBill.name || selectedBill.title || "Untitled Expense";
+  const title = selectedBill.name || selectedBill.title || "Untitled Expense";
   const people =
     (Array.isArray(selectedBill.sharedBy) && selectedBill.sharedBy.length > 0
       ? selectedBill.sharedBy.length : null) ||
-    Number(selectedBill.pax) ||
-    Number(selectedBill.people) ||
-    1;
+    Number(selectedBill.pax) || Number(selectedBill.people) || 1;
  
-  const amount    = Number(selectedBill.amount || 0);
+  const amount = Number(selectedBill.amount || 0);
   const perPerson = people > 0 ? (amount / people).toFixed(2) : "0.00";
   const isFinished = selectedBill.status === "Finished";
  
@@ -84,7 +78,6 @@ function BillDetail({ setPage, selectedBill, markBillAsSettled }) {
           <span className="ns-info-value">{selectedBill.date || "Recently added"}</span>
         </div>
  
-        {/* Member chips */}
         {Array.isArray(selectedBill.sharedBy) && selectedBill.sharedBy.length > 0 && (
           <div className="ns-info-row" style={{ alignItems: "flex-start" }}>
             <span className="ns-info-label">Members</span>
@@ -97,12 +90,25 @@ function BillDetail({ setPage, selectedBill, markBillAsSettled }) {
         )}
       </div>
  
+      {/* ── Slip Image ── */}
+      {selectedBill.slipImage && (
+        <>
+          <div className="ns-section-label">สลิปการชำระเงิน</div>
+          <div className="ns-card" style={{ padding: 8 }}>
+            <img
+              src={selectedBill.slipImage}
+              alt="slip"
+              style={{ width: "100%", borderRadius: 12, maxHeight: 300, objectFit: "contain" }}
+            />
+          </div>
+        </>
+      )}
+ 
       {/* ── Actions ── */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
         <button className="ns-btn ns-btn-dark" onClick={() => setPage("settlement")}>
           View Settlement
         </button>
- 
         {!isFinished && (
           <button
             className="ns-btn ns-btn-primary"
@@ -114,12 +120,10 @@ function BillDetail({ setPage, selectedBill, markBillAsSettled }) {
             ✅ Mark as Settled
           </button>
         )}
- 
         <button className="ns-btn ns-btn-ghost" onClick={() => setPage("receipt")}>
           ← Back to Bills
         </button>
       </div>
- 
     </div>
   );
 }

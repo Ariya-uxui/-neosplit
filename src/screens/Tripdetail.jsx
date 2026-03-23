@@ -11,7 +11,6 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense }
   const getCategoryColor = (cat) =>
     ({ Food:"#FF6B35", Ticket:"#00FF85", Transport:"#FFD400", Travel:"#FFD400", Merch:"#FF3B5C", Hotel:"#8B5CF6" }[cat] || "#6B7280");
  
-  // Category breakdown for mini chart
   const catMap = {};
   tripBills.forEach((b) => {
     catMap[b.category] = (catMap[b.category] || 0) + (Number(b.amount) || 0);
@@ -88,7 +87,7 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense }
         <div className="ns-card" style={{ textAlign: "center", padding: 32, color: "var(--ns-muted)" }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>📋</div>
           <div style={{ fontWeight: 700, color: "var(--ns-text)", marginBottom: 4 }}>No expenses yet</div>
-          <div style={{ fontSize: 13 }}>Add your first expense to get started</div>
+          <div style={{ fontSize: 13 }}>Add your first bill from Bills page</div>
         </div>
       ) : (
         tripBills.map((bill, index) => {
@@ -102,7 +101,6 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense }
               className="ns-card"
               style={{ animationDelay: `${index * 0.05}s`, animation: "cardUp 0.3s ease" }}
             >
-              {/* Top */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 8 }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
                   <div style={{ fontSize: 20, width: 38, height: 38, background: "rgba(255,255,255,0.04)", borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -123,12 +121,10 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense }
                 </div>
               </div>
  
-              {/* Meta */}
               <div style={{ fontSize: 12, color: "var(--ns-muted)", marginBottom: 6 }}>
                 Paid by {bill.paidBy} · {people} pax · {each} THB/person
               </div>
  
-              {/* Status + Actions */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span className={`ns-badge ${isFinished ? "ns-badge-green" : "ns-badge-yellow"}`}>
                   {isFinished ? "✅ Settled" : "⏳ Pending"}
@@ -157,7 +153,7 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense }
         })
       )}
  
-      {/* ── Actions ── */}
+      {/* ── Go to Settlement ── */}
       <button className="ns-btn ns-btn-primary" style={{ marginTop: 8 }} onClick={() => setPage("settlement")}>
         Go to Settlement →
       </button>
