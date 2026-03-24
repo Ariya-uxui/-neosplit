@@ -21,7 +21,8 @@ import Splash from "./screens/Splash";
 import EditExpense from "./screens/Editexpense";
 import Navbar from "./components/Navbar";
 import ExportSummary from "./screens/ExportSummary";
- 
+import LandingPage from "./screens/LandingPage"; 
+
 const normalizeBill = (bill) => {
   const sharedBy = Array.isArray(bill.sharedBy) ? bill.sharedBy : [];
   const peopleCount = sharedBy.length || Number(bill.pax) || Number(bill.people) || 1;
@@ -52,6 +53,9 @@ function App() {
     try { return Number(localStorage.getItem("userPoints")) || 0; } catch { return 0; }
   });
  
+   const [showLanding, setShowLanding] = useState(true);
+
+
   const [tripBills, setTripBills] = useState(() => {
     try {
       const saved = localStorage.getItem("tripBills");
@@ -147,6 +151,7 @@ function App() {
     setTripBills((prev) => prev.map((b) => ({ ...b, status: "Finished" })));
     setSelectedBill(null);
   };
+}
  
   const renderPage = () => {
     const p = { setPage, tripBills, tripMembers };
@@ -177,7 +182,10 @@ function App() {
   };
  
   return (
-    <div className="app-bg">
+  <div className="app-bg">
+    {showLanding ? (
+      <LandingPage onEnter={() => setShowLanding(false)} />
+    ) : (
       <div className="phone-shell">
         <div className="phone-frame">
           <div className="phone-notch" />
@@ -186,8 +194,9 @@ function App() {
           {page !== "splash" && <Navbar page={page} setPage={setPage} />}
         </div>
       </div>
-    </div>
-  );
-}
- 
+    )}
+  </div>
+);
+
+
 export default App;
