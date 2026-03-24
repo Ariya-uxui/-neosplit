@@ -1,6 +1,6 @@
 {
-  "short_name": "React App",
-  "name": "Create React App Sample",
+  "short_name": "NeoSplit",
+  "name": "NeoSplit - Gamified Expense Splitting",
   "icons": [
     {
       "src": "favicon.ico",
@@ -20,6 +20,12 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "theme_color": "#00ff85",
+  "background_color": "#0a0a0a",
+  "orientation": "portrait",
+  "description": "Gamified expense splitting app for trips",
+  "categories": [
+    "finance",
+    "utilities"
+  ]
 }
