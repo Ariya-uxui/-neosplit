@@ -24,7 +24,7 @@ import ExportSummary from "./screens/ExportSummary";
 import LandingPage from "./screens/LandingPage";
 import { db } from "./firebase";
 import { ref, onValue, set, remove } from "firebase/database";
- 
+
 const normalizeBill = (bill) => {
   const sharedBy = Array.isArray(bill.sharedBy) ? bill.sharedBy : [];
   const peopleCount = sharedBy.length || Number(bill.pax) || Number(bill.people) || 1;
@@ -43,7 +43,7 @@ const normalizeBill = (bill) => {
     date: bill.date || "Recently added",
   };
 };
- 
+
 function App() {
   const [page, setPage] = useState("splash");
   const [toast, setToast] = useState("");
@@ -51,14 +51,14 @@ function App() {
   const [selectedBill, setSelectedBill] = useState(null);
   const [showLanding, setShowLanding] = useState(true);
   const [userPoints, setUserPoints] = useState(0);
- 
+
   // ── Active trip state ──
   const [currentTripId, setCurrentTripId] = useState(null);
   const [trips, setTrips] = useState([]);
   const [tripBills, setTripBills] = useState([]);
   const [tripMembers, setTripMembers] = useState([]);
   const [currentTrip, setCurrentTrip] = useState(null);
- 
+
   const [userProfile, setUserProfile] = useState(() => {
     try {
       const saved = localStorage.getItem("neosplitProfile");
@@ -69,7 +69,7 @@ function App() {
       return { name: "NongTaeyoung", selectedBias: "Taeyong", profileImage: "" };
     }
   });
- 
+
   // ── Check invite link on load ──
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -83,7 +83,7 @@ function App() {
       if (saved) setCurrentTripId(saved);
     }
   }, []);
- 
+
   // ── Load all trips list ──
   useEffect(() => {
     const unsub = onValue(ref(db, "trips"), (snap) => {
@@ -92,7 +92,7 @@ function App() {
     });
     return () => unsub();
   }, []);
- 
+
   // ── Load current trip data when tripId changes ──
   useEffect(() => {
     if (!currentTripId) return;
@@ -110,7 +110,7 @@ function App() {
     });
     return () => { unsubTrip(); unsubBills(); unsubMembers(); };
   }, [currentTripId]);
- 
+
   // ── Load points ──
   useEffect(() => {
     const unsub = onValue(ref(db, "userPoints"), (snap) => {
@@ -118,17 +118,17 @@ function App() {
     });
     return () => unsub();
   }, []);
- 
+
   useEffect(() => {
     localStorage.setItem("neosplitProfile", JSON.stringify(userProfile));
   }, [userProfile]);
- 
+
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(""), 1800);
     return () => clearTimeout(t);
   }, [toast]);
- 
+
   // ── Points ──
   const addPoints = (pts) => {
     setUserPoints((prev) => {
@@ -137,7 +137,7 @@ function App() {
       return updated;
     });
   };
- 
+
   const spendPoints = (pts) => {
     setUserPoints((prev) => {
       const updated = Math.max(0, prev - pts);
@@ -145,7 +145,7 @@ function App() {
       return updated;
     });
   };
- 
+
   // ── Trip actions ──
   const addTrip = (newTrip) => {
     const id = Date.now().toString();
@@ -161,7 +161,7 @@ function App() {
     localStorage.setItem("lastTripId", id);
     setToast("Trip created! 🚀");
   };
- 
+
   const deleteTrip = (id) => {
     remove(ref(db, `trips/${id}`));
     setTrips((prev) => prev.filter((t) => t.id !== id));
@@ -173,13 +173,13 @@ function App() {
     }
     setToast("Trip deleted");
   };
- 
+
   const selectTrip = (id) => {
     setCurrentTripId(id);
     localStorage.setItem("lastTripId", id);
     setPage("tripdetail");
   };
- 
+
   // ── Expense actions ──
   const addExpense = (newExpense) => {
     if (!currentTripId) return;
@@ -200,7 +200,7 @@ function App() {
     addPoints(5);
     setToast("Expense added ✓ +5 pts");
   };
- 
+
   const markBillAsSettled = (billId) => {
     if (!currentTripId) return;
     const bill = tripBills.find((b) => b.id === billId);
@@ -208,18 +208,18 @@ function App() {
     setSelectedBill((prev) => (prev?.id === billId ? { ...prev, status: "Finished" } : prev));
     setToast("Bill settled ✅");
   };
- 
+
   const deleteExpense = (id) => {
     if (!currentTripId) return;
     remove(ref(db, `trips/${currentTripId}/bills/${id}`));
     setToast("Expense deleted");
   };
- 
+
   const startEditExpense = (expense) => {
     setEditingExpense(expense);
     setPage("editexpense");
   };
- 
+
   const updateExpense = (updated) => {
     if (!currentTripId) return;
     set(ref(db, `trips/${currentTripId}/bills/${updated.id}`), updated);
@@ -227,7 +227,7 @@ function App() {
     setEditingExpense(null);
     setPage("tripdetail");
   };
- 
+
   const settleAllBills = () => {
     if (!currentTripId) return;
     const obj = {};
@@ -235,7 +235,7 @@ function App() {
     set(ref(db, `trips/${currentTripId}/bills`), obj);
     setSelectedBill(null);
   };
- 
+
   // ── Member actions ──
   const addMember = (name) => {
     const trimmed = name.trim();
@@ -245,20 +245,20 @@ function App() {
     newMembers.forEach((m, i) => { membersObj[i] = m; });
     if (currentTripId) set(ref(db, `trips/${currentTripId}/members`), membersObj);
   };
- 
+
   const removeMember = (name) => {
     const newMembers = tripMembers.filter((m) => m !== name);
     const membersObj = {};
     newMembers.forEach((m, i) => { membersObj[i] = m; });
     if (currentTripId) set(ref(db, `trips/${currentTripId}/members`), membersObj);
   };
- 
+
   // ── Invite link ──
   const getInviteLink = () => {
     if (!currentTripId) return "";
     return `${window.location.origin}?trip=${currentTripId}`;
   };
- 
+
   // ── Router ──
   const renderPage = () => {
     const p = { setPage, tripBills, tripMembers };
@@ -277,17 +277,17 @@ function App() {
       case "splitcalculator": return <SplitCalculator setPage={setPage} selectedBill={selectedBill} />;
       case "profile":         return <Profile setPage={setPage} userProfile={userProfile} setUserProfile={setUserProfile} />;
       case "trophy":
-      case "leaderboard":     return <Leaderboard setPage={setPage} userPoints={userPoints} userProfile={userProfile} />;
+      case "leaderboard":     return <Leaderboard setPage={setPage} userPoints={userPoints} userProfile={userProfile} tripMembers={tripMembers} />;
       case "mypoints":        return <MyPoints setPage={setPage} userPoints={userPoints} />;
       case "rewardslist":     return <Rewards setPage={setPage} userPoints={userPoints} onRedeem={spendPoints} />;
       case "yourredeem":      return <YourRedeem setPage={setPage} />;
-      case "pay":             return <Pay setPage={setPage} pointsEarned={userPoints} />;
+      case "pay":             return <Pay setPage={setPage} pointsEarned={userPoints} tripBills={tripBills} tripMembers={tripMembers} />;
       case "exportsummary":   return <ExportSummary setPage={setPage} tripBills={tripBills} tripMembers={tripMembers} userProfile={userProfile} />;
       case "thankyou":        return <ThankYou setPage={setPage} userProfile={userProfile} pointsEarned={userPoints} />;
       default:                return null;
     }
   };
- 
+
   return (
     <div className="app-bg">
       {showLanding ? (
@@ -305,5 +305,5 @@ function App() {
     </div>
   );
 }
- 
+
 export default App;
