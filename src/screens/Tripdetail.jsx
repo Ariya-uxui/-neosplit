@@ -2,7 +2,7 @@ import React from "react";
 import "../App.css";
 import ExpenseChart from "../components/ExpenseChart";
  
-function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense }) {
+function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense, deleteTrip, currentTrip, currentTripId, getInviteLink }) {
   const total = tripBills.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
  
   const getCategoryIcon = (cat) =>
@@ -19,11 +19,11 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense }
  
   return (
     <div className="ns-screen">
- 
+
       {/* ── Header ── */}
       <div className="ns-page-header">
         <button className="ns-back-btn" onClick={() => setPage("home")}>‹</button>
-        <span className="ns-title">Bills Detail</span>
+        <span className="ns-title">{currentTrip?.title || "Bills Detail"}</span>
         <button
           className="ns-btn ns-btn-primary"
           style={{ width: "auto", padding: "8px 16px", fontSize: 13 }}
@@ -32,7 +32,41 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense }
           + Add
         </button>
       </div>
- 
+
+      {/* ── Invite + Delete row ── */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <button
+          className="ns-btn ns-btn-dark"
+          style={{ flex: 1, padding: "10px", fontSize: 13 }}
+          onClick={() => {
+            const link = getInviteLink ? getInviteLink() : "";
+            if (link) {
+              navigator.clipboard.writeText(link);
+              alert("Invite link copied!\n\n" + link);
+            }
+          }}
+        >
+          🔗 Share Invite Link
+        </button>
+        <button
+          className="ns-btn"
+          style={{
+            width: "auto", padding: "10px 14px", fontSize: 12,
+            background: "rgba(255,59,92,0.08)",
+            color: "var(--ns-r)",
+            border: "1px solid rgba(255,59,92,0.2)",
+          }}
+          onClick={() => {
+            if (window.confirm("Delete this trip and all its expenses?")) {
+              if (deleteTrip && currentTripId) deleteTrip(currentTripId);
+              setPage("home");
+            }
+          }}
+        >
+          🗑
+        </button>
+      </div>
+
       {/* ── Summary card ── */}
       <div className="ns-card" style={{
         background: "linear-gradient(135deg, rgba(0,255,133,0.1), rgba(0,255,133,0.03))",
@@ -40,7 +74,7 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense }
         marginBottom: 14,
       }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(0,255,133,0.7)", marginBottom: 6 }}>
-          NCT127 Bangkok Concert
+          {currentTrip?.title || "Trip"}
         </div>
         <div style={{ fontFamily: "var(--ns-syne)", fontSize: 34, fontWeight: 800, color: "var(--ns-g)", letterSpacing: "-1px", lineHeight: 1 }}>
           {total.toLocaleString()}

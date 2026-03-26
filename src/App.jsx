@@ -23,7 +23,7 @@ import Navbar from "./components/Navbar";
 import ExportSummary from "./screens/ExportSummary";
 import LandingPage from "./screens/LandingPage";
 import { db } from "./firebase";
-import { ref, onValue, set } from "firebase/database";
+import { ref, onValue, set, remove } from "firebase/database";
  
 const normalizeBill = (bill) => {
   const sharedBy = Array.isArray(bill.sharedBy) ? bill.sharedBy : [];
@@ -45,15 +45,19 @@ const normalizeBill = (bill) => {
 };
  
 function App() {
-  const [tripMembers, setTripMembers] = useState(["NongTaeyoung", "Malikab", "Ariya"]);
   const [page, setPage] = useState("splash");
   const [toast, setToast] = useState("");
   const [editingExpense, setEditingExpense] = useState(null);
   const [selectedBill, setSelectedBill] = useState(null);
   const [showLanding, setShowLanding] = useState(true);
   const [userPoints, setUserPoints] = useState(0);
-  const [tripBills, setTripBills] = useState([]);
+ 
+  // ── Active trip state ──
+  const [currentTripId, setCurrentTripId] = useState(null);
   const [trips, setTrips] = useState([]);
+  const [tripBills, setTripBills] = useState([]);
+  const [tripMembers, setTripMembers] = useState([]);
+  const [currentTrip, setCurrentTrip] = useState(null);
  
   const [userProfile, setUserProfile] = useState(() => {
     try {
@@ -66,64 +70,55 @@ function App() {
     }
   });
  
-  // ── Firebase listeners (โหลดข้อมูลจาก Firebase real-time) ──
+  // ── Check invite link on load ──
   useEffect(() => {
-    const unsub = onValue(ref(db, "tripBills"), (snap) => {
-      const data = snap.val();
-      setTripBills(data ? Object.values(data).map(normalizeBill) : [
-        { id: 1, name: "Lunch at Fuji", amount: 1250, paidBy: "NongTaeyoung", pax: 4, category: "Food", date: "10/11/2024", status: "Pending", sharedBy: ["NongTaeyoung", "Malikab", "Ariya", "Johnny"] },
-        { id: 2, name: "Concert Ticket", amount: 6900, paidBy: "Malikab", pax: 3, category: "Ticket", date: "09/11/2024", status: "Pending", sharedBy: ["NongTaeyoung", "Malikab", "Ariya"] },
-        { id: 3, name: "Grab", amount: 250, paidBy: "Malikab", pax: 3, category: "Transport", date: "25/05/2024", status: "Pending", sharedBy: ["NongTaeyoung", "Malikab", "Ariya"] },
-      ].map(normalizeBill));
-    });
-    return () => unsub();
+    const params = new URLSearchParams(window.location.search);
+    const invitedTripId = params.get("trip");
+    if (invitedTripId) {
+      setCurrentTripId(invitedTripId);
+      localStorage.setItem("lastTripId", invitedTripId);
+      window.history.replaceState({}, "", window.location.pathname);
+    } else {
+      const saved = localStorage.getItem("lastTripId");
+      if (saved) setCurrentTripId(saved);
+    }
   }, []);
  
+  // ── Load all trips list ──
   useEffect(() => {
     const unsub = onValue(ref(db, "trips"), (snap) => {
       const data = snap.val();
-      setTrips(data ? Object.values(data) : [{ id: 1, title: "NCT127 Bangkok Concert", members: 3, total: "8150" }]);
+      setTrips(data ? Object.values(data) : []);
     });
     return () => unsub();
   }, []);
  
+  // ── Load current trip data when tripId changes ──
   useEffect(() => {
-    const unsub = onValue(ref(db, "tripMembers"), (snap) => {
+    if (!currentTripId) return;
+    const unsubTrip = onValue(ref(db, `trips/${currentTripId}`), (snap) => {
       const data = snap.val();
-      if (data) setTripMembers(data);
+      if (data) setCurrentTrip(data);
     });
-    return () => unsub();
-  }, []);
+    const unsubBills = onValue(ref(db, `trips/${currentTripId}/bills`), (snap) => {
+      const data = snap.val();
+      setTripBills(data ? Object.values(data).map(normalizeBill) : []);
+    });
+    const unsubMembers = onValue(ref(db, `trips/${currentTripId}/members`), (snap) => {
+      const data = snap.val();
+      setTripMembers(data ? Object.values(data) : []);
+    });
+    return () => { unsubTrip(); unsubBills(); unsubMembers(); };
+  }, [currentTripId]);
  
+  // ── Load points ──
   useEffect(() => {
     const unsub = onValue(ref(db, "userPoints"), (snap) => {
-      const data = snap.val();
-      if (data !== null) setUserPoints(Number(data) || 0);
+      if (snap.val() !== null) setUserPoints(Number(snap.val()) || 0);
     });
     return () => unsub();
   }, []);
  
-  // ── Firebase writers (บันทึกเมื่อข้อมูลเปลี่ยน) ──
-  useEffect(() => {
-    if (tripBills.length === 0) return;
-    const obj = {};
-    tripBills.forEach((b) => { obj[b.id] = b; });
-    set(ref(db, "tripBills"), obj);
-  }, [tripBills]);
- 
-  useEffect(() => {
-    if (trips.length === 0) return;
-    const obj = {};
-    trips.forEach((t) => { obj[t.id] = t; });
-    set(ref(db, "trips"), obj);
-  }, [trips]);
- 
-  useEffect(() => {
-    if (tripMembers.length === 0) return;
-    set(ref(db, "tripMembers"), tripMembers);
-  }, [tripMembers]);
- 
-  // userProfile ยังเก็บใน localStorage (ข้อมูลส่วนตัว ไม่ต้อง sync)
   useEffect(() => {
     localStorage.setItem("neosplitProfile", JSON.stringify(userProfile));
   }, [userProfile]);
@@ -151,35 +146,72 @@ function App() {
     });
   };
  
+  // ── Trip actions ──
+  const addTrip = (newTrip) => {
+    const id = Date.now().toString();
+    const trip = { id, ...newTrip };
+    set(ref(db, `trips/${id}`), trip);
+    // save members under trip
+    if (newTrip.memberList?.length > 0) {
+      const membersObj = {};
+      newTrip.memberList.forEach((m, i) => { membersObj[i] = m; });
+      set(ref(db, `trips/${id}/members`), membersObj);
+    }
+    setCurrentTripId(id);
+    localStorage.setItem("lastTripId", id);
+    setToast("Trip created! 🚀");
+  };
+ 
+  const deleteTrip = (id) => {
+    remove(ref(db, `trips/${id}`));
+    setTrips((prev) => prev.filter((t) => t.id !== id));
+    if (currentTripId === id) {
+      setCurrentTripId(null);
+      setTripBills([]);
+      setTripMembers([]);
+      localStorage.removeItem("lastTripId");
+    }
+    setToast("Trip deleted");
+  };
+ 
+  const selectTrip = (id) => {
+    setCurrentTripId(id);
+    localStorage.setItem("lastTripId", id);
+    setPage("tripdetail");
+  };
+ 
   // ── Expense actions ──
   const addExpense = (newExpense) => {
+    if (!currentTripId) return;
     const sharedBy = newExpense.sharedBy?.length > 0 ? newExpense.sharedBy : tripMembers;
-    setTripBills((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        name: newExpense.name || "Untitled Expense",
-        amount: Number(newExpense.amount) || 0,
-        paidBy: newExpense.paidBy || tripMembers[0],
-        pax: sharedBy.length,
-        category: newExpense.category || "Other",
-        date: newExpense.date || new Date().toLocaleDateString("en-GB"),
-        status: "Pending",
-        sharedBy,
-      },
-    ]);
+    const id = Date.now();
+    const bill = {
+      id,
+      name: newExpense.name || "Untitled Expense",
+      amount: Number(newExpense.amount) || 0,
+      paidBy: newExpense.paidBy || tripMembers[0],
+      pax: sharedBy.length,
+      category: newExpense.category || "Other",
+      date: newExpense.date || new Date().toLocaleDateString("en-GB"),
+      status: "Pending",
+      sharedBy,
+    };
+    set(ref(db, `trips/${currentTripId}/bills/${id}`), bill);
     addPoints(5);
     setToast("Expense added ✓ +5 pts");
   };
  
   const markBillAsSettled = (billId) => {
-    setTripBills((prev) => prev.map((b) => (b.id === billId ? { ...b, status: "Finished" } : b)));
+    if (!currentTripId) return;
+    const bill = tripBills.find((b) => b.id === billId);
+    if (bill) set(ref(db, `trips/${currentTripId}/bills/${billId}`), { ...bill, status: "Finished" });
     setSelectedBill((prev) => (prev?.id === billId ? { ...prev, status: "Finished" } : prev));
     setToast("Bill settled ✅");
   };
  
   const deleteExpense = (id) => {
-    setTripBills((prev) => prev.filter((b) => b.id !== id));
+    if (!currentTripId) return;
+    remove(ref(db, `trips/${currentTripId}/bills/${id}`));
     setToast("Expense deleted");
   };
  
@@ -189,14 +221,18 @@ function App() {
   };
  
   const updateExpense = (updated) => {
-    setTripBills((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
+    if (!currentTripId) return;
+    set(ref(db, `trips/${currentTripId}/bills/${updated.id}`), updated);
     setToast("Expense updated ✓");
     setEditingExpense(null);
     setPage("tripdetail");
   };
  
   const settleAllBills = () => {
-    setTripBills((prev) => prev.map((b) => ({ ...b, status: "Finished" })));
+    if (!currentTripId) return;
+    const obj = {};
+    tripBills.forEach((b) => { obj[b.id] = { ...b, status: "Finished" }; });
+    set(ref(db, `trips/${currentTripId}/bills`), obj);
     setSelectedBill(null);
   };
  
@@ -204,21 +240,23 @@ function App() {
   const addMember = (name) => {
     const trimmed = name.trim();
     if (!trimmed || tripMembers.includes(trimmed)) return;
-    setTripMembers((prev) => [...prev, trimmed]);
+    const newMembers = [...tripMembers, trimmed];
+    const membersObj = {};
+    newMembers.forEach((m, i) => { membersObj[i] = m; });
+    if (currentTripId) set(ref(db, `trips/${currentTripId}/members`), membersObj);
   };
  
   const removeMember = (name) => {
-    setTripMembers((prev) => prev.filter((m) => m !== name));
+    const newMembers = tripMembers.filter((m) => m !== name);
+    const membersObj = {};
+    newMembers.forEach((m, i) => { membersObj[i] = m; });
+    if (currentTripId) set(ref(db, `trips/${currentTripId}/members`), membersObj);
   };
  
-  // ── Trip actions ──
-  const addTrip = (newTrip) => {
-    setTrips((prev) => [...prev, { id: Date.now(), ...newTrip }]);
-  };
- 
-  const deleteTrip = (id) => {
-    setTrips((prev) => prev.filter((t) => t.id !== id));
-    setToast("Trip deleted");
+  // ── Invite link ──
+  const getInviteLink = () => {
+    if (!currentTripId) return "";
+    return `${window.location.origin}?trip=${currentTripId}`;
   };
  
   // ── Router ──
@@ -226,9 +264,9 @@ function App() {
     const p = { setPage, tripBills, tripMembers };
     switch (page) {
       case "splash":          return <Splash setPage={setPage} />;
-      case "home":            return <Home {...p} userProfile={userProfile} trips={trips} deleteTrip={deleteTrip} />;
+      case "home":            return <Home {...p} userProfile={userProfile} trips={trips} currentTripId={currentTripId} selectTrip={selectTrip} deleteTrip={deleteTrip} />;
       case "create":          return <CreateTrip setPage={setPage} addTrip={addTrip} />;
-      case "tripdetail":      return <TripDetail {...p} deleteExpense={deleteExpense} startEditExpense={startEditExpense} deleteTrip={deleteTrip} trips={trips} />;
+      case "tripdetail":      return <TripDetail {...p} deleteExpense={deleteExpense} startEditExpense={startEditExpense} deleteTrip={deleteTrip} currentTrip={currentTrip} currentTripId={currentTripId} getInviteLink={getInviteLink} />;
       case "addexpense":      return <AddExpense {...p} addExpense={addExpense} addMember={addMember} removeMember={removeMember} />;
       case "editexpense":     return <EditExpense {...p} editingExpense={editingExpense} updateExpense={updateExpense} />;
       case "receipt":         return <Bills {...p} setSelectedBill={setSelectedBill} />;
@@ -267,4 +305,5 @@ function App() {
     </div>
   );
 }
+ 
 export default App;
