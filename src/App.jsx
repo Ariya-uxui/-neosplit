@@ -21,8 +21,10 @@ import Splash from "./screens/Splash";
 import EditExpense from "./screens/Editexpense";
 import Navbar from "./components/Navbar";
 import ExportSummary from "./screens/ExportSummary";
-import LandingPage from "./screens/LandingPage"; 
-
+import LandingPage from "./screens/LandingPage";
+import { db } from "./firebase";
+import { ref, onValue, set } from "firebase/database";
+ 
 const normalizeBill = (bill) => {
   const sharedBy = Array.isArray(bill.sharedBy) ? bill.sharedBy : [];
   const peopleCount = sharedBy.length || Number(bill.pax) || Number(bill.people) || 1;
@@ -43,86 +45,136 @@ const normalizeBill = (bill) => {
 };
  
 function App() {
-  const tripMembers = ["NongTaeyoung", "Malikab", "Ariya"];
+  const [tripMembers, setTripMembers] = useState(["NongTaeyoung", "Malikab", "Ariya"]);
   const [page, setPage] = useState("splash");
   const [toast, setToast] = useState("");
   const [editingExpense, setEditingExpense] = useState(null);
   const [selectedBill, setSelectedBill] = useState(null);
- 
-  const [userPoints, setUserPoints] = useState(() => {
-    try { return Number(localStorage.getItem("userPoints")) || 0; } catch { return 0; }
-  });
- 
-   const [showLanding, setShowLanding] = useState(true);
-
-
-  const [tripBills, setTripBills] = useState(() => {
-    try {
-      const saved = localStorage.getItem("tripBills");
-      const bills = saved ? JSON.parse(saved) : [
-        { id: 1, name: "Lunch at Fuji", amount: 1250, paidBy: "NongTaeyoung", pax: 4, category: "Food", date: "10/11/2024", status: "Pending", sharedBy: ["NongTaeyoung", "Malikab", "Ariya", "Johnny"] },
-        { id: 2, name: "Concert Ticket", amount: 6900, paidBy: "Malikab", pax: 3, category: "Ticket", date: "09/11/2024", status: "Pending", sharedBy: ["NongTaeyoung", "Malikab", "Ariya"] },
-        { id: 3, name: "Grab", amount: 250, paidBy: "Malikab", pax: 3, category: "Transport", date: "25/05/2024", status: "Pending", sharedBy: ["NongTaeyoung", "Malikab", "Ariya"] },
-      ];
-      return bills.map(normalizeBill);
-    } catch { return []; }
-  });
+  const [showLanding, setShowLanding] = useState(true);
+  const [userPoints, setUserPoints] = useState(0);
+  const [tripBills, setTripBills] = useState([]);
+  const [trips, setTrips] = useState([]);
  
   const [userProfile, setUserProfile] = useState(() => {
     try {
       const saved = localStorage.getItem("neosplitProfile");
-      return saved ? JSON.parse(saved) : { name: "NongTaeyoung", selectedBias: "Taeyong", profileImage: "https://i.pinimg.com/736x/0b/11/d4/0b11d44290e5c34a8ebf40c4d58bde8f.jpg" };
-    } catch { return { name: "NongTaeyoung", selectedBias: "Taeyong", profileImage: "" }; }
+      return saved
+        ? JSON.parse(saved)
+        : { name: "NongTaeyoung", selectedBias: "Taeyong", profileImage: "https://i.pinimg.com/736x/0b/11/d4/0b11d44290e5c34a8ebf40c4d58bde8f.jpg" };
+    } catch {
+      return { name: "NongTaeyoung", selectedBias: "Taeyong", profileImage: "" };
+    }
   });
  
-  const [trips, setTrips] = useState(() => {
-    try {
-      const saved = localStorage.getItem("trips");
-      return saved ? JSON.parse(saved) : [{ id: 1, title: "NCT127 Bangkok Concert", members: 3, total: "8150" }];
-    } catch { return []; }
-  });
+  // ── Firebase listeners (โหลดข้อมูลจาก Firebase real-time) ──
+  useEffect(() => {
+    const unsub = onValue(ref(db, "tripBills"), (snap) => {
+      const data = snap.val();
+      setTripBills(data ? Object.values(data).map(normalizeBill) : [
+        { id: 1, name: "Lunch at Fuji", amount: 1250, paidBy: "NongTaeyoung", pax: 4, category: "Food", date: "10/11/2024", status: "Pending", sharedBy: ["NongTaeyoung", "Malikab", "Ariya", "Johnny"] },
+        { id: 2, name: "Concert Ticket", amount: 6900, paidBy: "Malikab", pax: 3, category: "Ticket", date: "09/11/2024", status: "Pending", sharedBy: ["NongTaeyoung", "Malikab", "Ariya"] },
+        { id: 3, name: "Grab", amount: 250, paidBy: "Malikab", pax: 3, category: "Transport", date: "25/05/2024", status: "Pending", sharedBy: ["NongTaeyoung", "Malikab", "Ariya"] },
+      ].map(normalizeBill));
+    });
+    return () => unsub();
+  }, []);
  
-  useEffect(() => { localStorage.setItem("neosplitProfile", JSON.stringify(userProfile)); }, [userProfile]);
-  useEffect(() => { localStorage.setItem("tripBills", JSON.stringify(tripBills)); }, [tripBills]);
-  useEffect(() => { localStorage.setItem("trips", JSON.stringify(trips)); }, [trips]);
+  useEffect(() => {
+    const unsub = onValue(ref(db, "trips"), (snap) => {
+      const data = snap.val();
+      setTrips(data ? Object.values(data) : [{ id: 1, title: "NCT127 Bangkok Concert", members: 3, total: "8150" }]);
+    });
+    return () => unsub();
+  }, []);
+ 
+  useEffect(() => {
+    const unsub = onValue(ref(db, "tripMembers"), (snap) => {
+      const data = snap.val();
+      if (data) setTripMembers(data);
+    });
+    return () => unsub();
+  }, []);
+ 
+  useEffect(() => {
+    const unsub = onValue(ref(db, "userPoints"), (snap) => {
+      const data = snap.val();
+      if (data !== null) setUserPoints(Number(data) || 0);
+    });
+    return () => unsub();
+  }, []);
+ 
+  // ── Firebase writers (บันทึกเมื่อข้อมูลเปลี่ยน) ──
+  useEffect(() => {
+    if (tripBills.length === 0) return;
+    const obj = {};
+    tripBills.forEach((b) => { obj[b.id] = b; });
+    set(ref(db, "tripBills"), obj);
+  }, [tripBills]);
+ 
+  useEffect(() => {
+    if (trips.length === 0) return;
+    const obj = {};
+    trips.forEach((t) => { obj[t.id] = t; });
+    set(ref(db, "trips"), obj);
+  }, [trips]);
+ 
+  useEffect(() => {
+    if (tripMembers.length === 0) return;
+    set(ref(db, "tripMembers"), tripMembers);
+  }, [tripMembers]);
+ 
+  // userProfile ยังเก็บใน localStorage (ข้อมูลส่วนตัว ไม่ต้อง sync)
+  useEffect(() => {
+    localStorage.setItem("neosplitProfile", JSON.stringify(userProfile));
+  }, [userProfile]);
+ 
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(""), 1800);
     return () => clearTimeout(t);
   }, [toast]);
  
+  // ── Points ──
   const addPoints = (pts) => {
-    setUserPoints(prev => {
+    setUserPoints((prev) => {
       const updated = prev + pts;
-      localStorage.setItem("userPoints", updated);
+      set(ref(db, "userPoints"), updated);
       return updated;
     });
   };
  
   const spendPoints = (pts) => {
-    setUserPoints(prev => {
+    setUserPoints((prev) => {
       const updated = Math.max(0, prev - pts);
-      localStorage.setItem("userPoints", updated);
+      set(ref(db, "userPoints"), updated);
       return updated;
     });
   };
  
+  // ── Expense actions ──
   const addExpense = (newExpense) => {
     const sharedBy = newExpense.sharedBy?.length > 0 ? newExpense.sharedBy : tripMembers;
-    setTripBills((prev) => [...prev, {
-      id: Date.now(), name: newExpense.name || "Untitled Expense",
-      amount: Number(newExpense.amount) || 0, paidBy: newExpense.paidBy || tripMembers[0],
-      pax: sharedBy.length, category: newExpense.category || "Other",
-      date: newExpense.date || new Date().toLocaleDateString("en-GB"),
-      status: "Pending", sharedBy,
-    }]);
+    setTripBills((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        name: newExpense.name || "Untitled Expense",
+        amount: Number(newExpense.amount) || 0,
+        paidBy: newExpense.paidBy || tripMembers[0],
+        pax: sharedBy.length,
+        category: newExpense.category || "Other",
+        date: newExpense.date || new Date().toLocaleDateString("en-GB"),
+        status: "Pending",
+        sharedBy,
+      },
+    ]);
     addPoints(5);
     setToast("Expense added ✓ +5 pts");
   };
  
   const markBillAsSettled = (billId) => {
-    setTripBills((prev) => prev.map((b) => b.id === billId ? { ...b, status: "Finished" } : b));
-    setSelectedBill((prev) => prev?.id === billId ? { ...prev, status: "Finished" } : prev);
+    setTripBills((prev) => prev.map((b) => (b.id === billId ? { ...b, status: "Finished" } : b)));
+    setSelectedBill((prev) => (prev?.id === billId ? { ...prev, status: "Finished" } : prev));
     setToast("Bill settled ✅");
   };
  
@@ -137,30 +189,47 @@ function App() {
   };
  
   const updateExpense = (updated) => {
-    setTripBills((prev) => prev.map((b) => b.id === updated.id ? updated : b));
+    setTripBills((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
     setToast("Expense updated ✓");
     setEditingExpense(null);
     setPage("tripdetail");
-  };
- 
-  const addTrip = (newTrip) => {
-    setTrips((prev) => [...prev, { id: Date.now(), ...newTrip }]);
   };
  
   const settleAllBills = () => {
     setTripBills((prev) => prev.map((b) => ({ ...b, status: "Finished" })));
     setSelectedBill(null);
   };
-}
  
+  // ── Member actions ──
+  const addMember = (name) => {
+    const trimmed = name.trim();
+    if (!trimmed || tripMembers.includes(trimmed)) return;
+    setTripMembers((prev) => [...prev, trimmed]);
+  };
+ 
+  const removeMember = (name) => {
+    setTripMembers((prev) => prev.filter((m) => m !== name));
+  };
+ 
+  // ── Trip actions ──
+  const addTrip = (newTrip) => {
+    setTrips((prev) => [...prev, { id: Date.now(), ...newTrip }]);
+  };
+ 
+  const deleteTrip = (id) => {
+    setTrips((prev) => prev.filter((t) => t.id !== id));
+    setToast("Trip deleted");
+  };
+ 
+  // ── Router ──
   const renderPage = () => {
     const p = { setPage, tripBills, tripMembers };
     switch (page) {
       case "splash":          return <Splash setPage={setPage} />;
-      case "home":            return <Home {...p} userProfile={userProfile} trips={trips} />;
+      case "home":            return <Home {...p} userProfile={userProfile} trips={trips} deleteTrip={deleteTrip} />;
       case "create":          return <CreateTrip setPage={setPage} addTrip={addTrip} />;
-      case "tripdetail":      return <TripDetail {...p} deleteExpense={deleteExpense} startEditExpense={startEditExpense} />;
-      case "addexpense":      return <AddExpense {...p} addExpense={addExpense} />;
+      case "tripdetail":      return <TripDetail {...p} deleteExpense={deleteExpense} startEditExpense={startEditExpense} deleteTrip={deleteTrip} trips={trips} />;
+      case "addexpense":      return <AddExpense {...p} addExpense={addExpense} addMember={addMember} removeMember={removeMember} />;
       case "editexpense":     return <EditExpense {...p} editingExpense={editingExpense} updateExpense={updateExpense} />;
       case "receipt":         return <Bills {...p} setSelectedBill={setSelectedBill} />;
       case "billhistory":     return <BillHistory {...p} setSelectedBill={setSelectedBill} />;
@@ -174,29 +243,28 @@ function App() {
       case "mypoints":        return <MyPoints setPage={setPage} userPoints={userPoints} />;
       case "rewardslist":     return <Rewards setPage={setPage} userPoints={userPoints} onRedeem={spendPoints} />;
       case "yourredeem":      return <YourRedeem setPage={setPage} />;
-      case "pay":             return <Pay setPage={setPage} />;
-      case "exportsummary": return <ExportSummary setPage={setPage} tripBills={tripBills} tripMembers={tripMembers} userProfile={userProfile} />;
+      case "pay":             return <Pay setPage={setPage} pointsEarned={userPoints} />;
+      case "exportsummary":   return <ExportSummary setPage={setPage} tripBills={tripBills} tripMembers={tripMembers} userProfile={userProfile} />;
       case "thankyou":        return <ThankYou setPage={setPage} userProfile={userProfile} pointsEarned={userPoints} />;
       default:                return null;
     }
   };
  
   return (
-  <div className="app-bg">
-    {showLanding ? (
-      <LandingPage onEnter={() => setShowLanding(false)} />
-    ) : (
-      <div className="phone-shell">
-        <div className="phone-frame">
-          <div className="phone-notch" />
-          {renderPage()}
-          {toast && <div className="toast">{toast}</div>}
-          {page !== "splash" && <Navbar page={page} setPage={setPage} />}
+    <div className="app-bg">
+      {showLanding ? (
+        <LandingPage onEnter={() => setShowLanding(false)} />
+      ) : (
+        <div className="phone-shell">
+          <div className="phone-frame">
+            <div className="phone-notch" />
+            {renderPage()}
+            {toast && <div className="toast">{toast}</div>}
+            {page !== "splash" && <Navbar page={page} setPage={setPage} />}
+          </div>
         </div>
-      </div>
-    )}
-  </div>
-);
-
-
+      )}
+    </div>
+  );
+}
 export default App;

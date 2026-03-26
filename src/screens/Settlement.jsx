@@ -89,7 +89,7 @@ function Settlement({
   const handleSettleAll = () => {
     settleAllBills();
     if (onSettleAndEarnPoints) onSettleAndEarnPoints(pointsToEarn);
-    setPage("thankyou");
+    setPage("pay");
   };
  
   return (
