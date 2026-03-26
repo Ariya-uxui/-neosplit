@@ -1,35 +1,77 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import "../App.css";
- 
-function Leaderboard({ setPage, userPoints = 0, userProfile }) {
+import { db } from "../firebase";
+import { ref, onValue, set } from "firebase/database";
+
+function Leaderboard({ setPage, userPoints = 0, userProfile, tripMembers = [] }) {
   const currentUser = userProfile?.name || "NongTaeyoung";
- 
-  // รวม user จริงกับ mock users
-  const allUsers = [
-    { name: currentUser, points: userPoints, isMe: true },
-    { name: "Malikab", points: 100 },
-    { name: "Haechan", points: 80 },
-    { name: "Yutaaaaaa", points: 75 },
-  ].sort((a, b) => b.points - a.points);
- 
+  const [scores, setScores] = useState({});
+
+  // โหลดคะแนนทุกคนจาก Firebase
+  useEffect(() => {
+    const unsub = onValue(ref(db, "memberPoints"), (snap) => {
+      const data = snap.val() || {};
+      setScores(data);
+    });
+    return () => unsub();
+  }, []);
+
+  // sync คะแนนตัวเองขึ้น Firebase เมื่อ userPoints เปลี่ยน
+  useEffect(() => {
+    if (!currentUser) return;
+    set(ref(db, `memberPoints/${currentUser}`), userPoints);
+  }, [userPoints, currentUser]);
+
+  // รวม members ทั้งหมด
+  const allNames = Array.from(new Set([
+    ...tripMembers,
+    ...Object.keys(scores),
+    currentUser,
+  ]));
+
+  const allUsers = allNames
+    .map((name) => ({
+      name,
+      points: name === currentUser ? userPoints : (scores[name] || 0),
+      isMe: name === currentUser,
+    }))
+    .sort((a, b) => b.points - a.points);
+
   const medals = ["👑", "🥈", "🥉"];
- 
+
+  const handleReset = () => {
+    if (!window.confirm("Reset คะแนนทุกคนเป็น 0 ใช่ไหม?")) return;
+    const resetObj = {};
+    allUsers.forEach((u) => { resetObj[u.name] = 0; });
+    set(ref(db, "memberPoints"), resetObj);
+    set(ref(db, "userPoints"), 0);
+  };
+
   return (
     <div className="ns-screen">
- 
-      {/* ── Header ── */}
+
+      {/* Header */}
       <div className="ns-page-header">
         <span className="ns-display">Leaderboard</span>
-        <button
-          className="ns-btn ns-btn-ghost"
-          style={{ width: "auto", padding: "8px 14px", fontSize: 13 }}
-          onClick={() => setPage("mypoints")}
-        >
-          My Points
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            className="ns-btn ns-btn-ghost"
+            style={{ width: "auto", padding: "8px 12px", fontSize: 12 }}
+            onClick={handleReset}
+          >
+            🔄 Reset
+          </button>
+          <button
+            className="ns-btn ns-btn-ghost"
+            style={{ width: "auto", padding: "8px 14px", fontSize: 13 }}
+            onClick={() => setPage("mypoints")}
+          >
+            My Points
+          </button>
+        </div>
       </div>
- 
-      {/* ── Top 3 podium ── */}
+
+      {/* Top 3 podium */}
       <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", gap: 12, marginBottom: 20, padding: "20px 0" }}>
         {[allUsers[1], allUsers[0], allUsers[2]].map((user, i) => {
           if (!user) return <div key={i} style={{ width: 90 }} />;
@@ -48,7 +90,12 @@ function Leaderboard({ setPage, userPoints = 0, userProfile }) {
               }}>
                 {user.name.charAt(0).toUpperCase()}
               </div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: user.isMe ? "var(--ns-g)" : "var(--ns-text2)", textAlign: "center", maxWidth: 70, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div style={{
+                fontSize: 11, fontWeight: 700,
+                color: user.isMe ? "var(--ns-g)" : "var(--ns-text2)",
+                textAlign: "center", maxWidth: 70,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>
                 {user.isMe ? "You" : user.name}
               </div>
               <div style={{
@@ -65,8 +112,8 @@ function Leaderboard({ setPage, userPoints = 0, userProfile }) {
           );
         })}
       </div>
- 
-      {/* ── Full list ── */}
+
+      {/* Full list */}
       <div className="ns-section-label">Rankings</div>
       {allUsers.map((user, index) => (
         <div
@@ -103,12 +150,12 @@ function Leaderboard({ setPage, userPoints = 0, userProfile }) {
           </div>
         </div>
       ))}
- 
+
       <button className="ns-btn ns-btn-primary" style={{ marginTop: 8 }} onClick={() => setPage("mypoints")}>
         My Points →
       </button>
     </div>
   );
 }
- 
+
 export default Leaderboard;
