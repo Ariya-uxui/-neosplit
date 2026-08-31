@@ -55,7 +55,7 @@ const initialUiState = {
   toast: "",
   editingExpense: null,
   selectedBill: null,
-  showLanding: true,
+  showLanding: false,
 };
 
 function uiReducer(state, action) {
@@ -247,14 +247,23 @@ function App() {
 
   // ── Trip actions ──
   const addTrip = (newTrip) => {
+    if (!authReady) {
+      setToast("Still connecting… try again in a second");
+      return;
+    }
     const id = Date.now().toString();
     const trip = { id, ...newTrip };
-    set(ref(db, `trips/${id}`), trip);
+    set(ref(db, `trips/${id}`), trip).catch((err) => {
+      console.error("Failed to save trip:", err);
+      setToast("Couldn't save trip — check your connection");
+    });
     // save members under trip
     if (newTrip.memberList?.length > 0) {
       const membersObj = {};
       newTrip.memberList.forEach((m, i) => { membersObj[i] = m; });
-      set(ref(db, `trips/${id}/members`), membersObj);
+      set(ref(db, `trips/${id}/members`), membersObj).catch((err) => {
+        console.error("Failed to save trip members:", err);
+      });
     }
     dispatchTrip({ type: "SET_CURRENT_TRIP_ID", id });
     localStorage.setItem("lastTripId", id);

@@ -3,7 +3,7 @@ import { getDatabase } from "firebase/database";
 import { getAuth } from "firebase/auth";
  
 const firebaseConfig = {
-  apiKey: "AIzaSyBMPHKlH46MtYgDbrvWI7JOtTQvz8QNqG0",
+  apiKey: "AIzaSyBMPHklH46MtYgDbrvWI7JOtTQvz8QNqG0",
   authDomain: "neosplit127.firebaseapp.com",
   databaseURL: "https://neosplit127-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "neosplit127",
@@ -16,4 +16,3 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getDatabase(app);
 export const auth = getAuth(app);
- 
