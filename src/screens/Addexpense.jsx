@@ -10,7 +10,7 @@ const CATEGORIES = [
   { id: "Other", icon: "💸" },
 ];
  
-function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMember }) {
+function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMember, editMember }) {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [paidBy, setPaidBy] = useState(tripMembers[0] || "");
@@ -18,6 +18,9 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
   const [sharedBy, setSharedBy] = useState([...tripMembers]);
   const [newMemberName, setNewMemberName] = useState("");
   const [showAddMember, setShowAddMember] = useState(false);
+  const [editingMember, setEditingMember] = useState(null);
+  const [editValue, setEditValue] = useState("");
+  const [editError, setEditError] = useState("");
  
   const handleAddMember = () => {
     const trimmed = newMemberName.trim();
@@ -36,6 +39,46 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
       const remaining = tripMembers.filter((m) => m !== member);
       setPaidBy(remaining[0] || "");
     }
+    if (editingMember === member) {
+      setEditingMember(null);
+      setEditValue("");
+      setEditError("");
+    }
+  };
+ 
+  const startEditMember = (member) => {
+    setEditingMember(member);
+    setEditValue(member);
+    setEditError("");
+  };
+ 
+  const cancelEditMember = () => {
+    setEditingMember(null);
+    setEditValue("");
+    setEditError("");
+  };
+ 
+  const saveEditMember = () => {
+    const trimmed = editValue.trim();
+    if (!trimmed) {
+      setEditError("Name can't be empty");
+      return;
+    }
+    const isDuplicate = tripMembers.some(
+      (m) => m !== editingMember && m.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (isDuplicate) {
+      setEditError("That name is already used");
+      return;
+    }
+    if (trimmed !== editingMember) {
+      if (editMember) editMember(editingMember, trimmed);
+      setSharedBy((prev) => prev.map((m) => (m === editingMember ? trimmed : m)));
+      if (paidBy === editingMember) setPaidBy(trimmed);
+    }
+    setEditingMember(null);
+    setEditValue("");
+    setEditError("");
   };
  
   const toggleMember = (member) =>
@@ -130,42 +173,126 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
               </div>
  
               <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 8 }}>
-                {tripMembers.map((m) => (
-                  <div
-                    key={m}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 5,
-                      padding: "5px 10px 5px 12px",
-                      borderRadius: 100,
-                      background: "var(--ns-card2)",
-                      border: "1px solid var(--ns-border)",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: "var(--ns-text2)",
-                    }}
-                  >
-                    {m}
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveMember(m)}
+                {tripMembers.map((m) =>
+                  editingMember === m ? (
+                    <div
+                      key={m}
                       style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        color: "rgba(255,59,92,0.7)",
-                        fontSize: 16,
-                        lineHeight: 1,
-                        padding: "0 0 0 2px",
                         display: "flex",
                         alignItems: "center",
+                        gap: 6,
+                        padding: "4px 6px 4px 10px",
+                        borderRadius: 100,
+                        background: "var(--ns-card2)",
+                        border: "1px solid rgba(0,255,133,0.4)",
                       }}
                     >
-                      &times;
-                    </button>
-                  </div>
-                ))}
+                      <input
+                        className="ns-input"
+                        value={editValue}
+                        onChange={(e) => {
+                          setEditValue(e.target.value);
+                          setEditError("");
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            saveEditMember();
+                          }
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            cancelEditMember();
+                          }
+                        }}
+                        autoFocus
+                        style={{
+                          width: 92,
+                          padding: "4px 8px",
+                          fontSize: 12,
+                          marginBottom: 0,
+                          borderRadius: 100,
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={saveEditMember}
+                        title="Save"
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          color: "var(--ns-g)",
+                          fontSize: 15,
+                          lineHeight: 1,
+                          padding: 0,
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        ✓
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEditMember}
+                        title="Cancel"
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          color: "var(--ns-muted)",
+                          fontSize: 14,
+                          lineHeight: 1,
+                          padding: 0,
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <div
+                      key={m}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 5,
+                        padding: "5px 10px 5px 12px",
+                        borderRadius: 100,
+                        background: "var(--ns-card2)",
+                        border: "1px solid var(--ns-border)",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: "var(--ns-text2)",
+                      }}
+                    >
+                      <span
+                        onClick={() => startEditMember(m)}
+                        title="Tap to rename"
+                        style={{ cursor: "pointer" }}
+                      >
+                        {m}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveMember(m)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          color: "rgba(255,59,92,0.7)",
+                          fontSize: 16,
+                          lineHeight: 1,
+                          padding: "0 0 0 2px",
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  )
+                )}
  
                 <button
                   type="button"
@@ -218,6 +345,12 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
                   >
                     Add ✓
                   </button>
+                </div>
+              )}
+ 
+              {editError && (
+                <div style={{ fontSize: 11, color: "var(--ns-r)", marginTop: 6 }}>
+                  {editError}
                 </div>
               )}
             </div>

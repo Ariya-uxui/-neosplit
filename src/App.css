@@ -45,6 +45,50 @@
   --ns-text2:   rgba(240, 239, 232, 0.7);
   --ns-syne:    'Syne', sans-serif;
   --ns-dm:      'DM Sans', sans-serif;
+  --ns-on-accent: #000; /* text color used on top of an accent-colored surface */
+}
+
+/* ═══════════════════════════════════════════
+   THEMES
+   Applied via data-theme="neon" | "light" | "dark"
+   on the outer .app-bg wrapper. "neon" is the
+   default look above; these blocks override
+   just the color tokens for the other themes.
+═══════════════════════════════════════════ */
+[data-theme="light"] {
+  --ns-g:       #059669;
+  --ns-g2:      #047857;
+  --ns-y:       #d97706;
+  --ns-o:       #ea580c;
+  --ns-r:       #dc2626;
+  --ns-bg:      #ffffff;
+  --ns-bg2:     #f7f7f7;
+  --ns-card:    #ffffff;
+  --ns-card2:   #f2f2f2;
+  --ns-border:  rgba(0, 0, 0, 0.08);
+  --ns-border2: rgba(0, 0, 0, 0.15);
+  --ns-muted:   rgba(0, 0, 0, 0.45);
+  --ns-text:    #111111;
+  --ns-text2:   rgba(17, 17, 17, 0.7);
+  --ns-on-accent: #ffffff;
+}
+
+[data-theme="dark"] {
+  --ns-g:       #e5e5e5;
+  --ns-g2:      #ffffff;
+  --ns-y:       #fbbf24;
+  --ns-o:       #fb923c;
+  --ns-r:       #f87171;
+  --ns-bg:      #000000;
+  --ns-bg2:     #0a0a0a;
+  --ns-card:    #121212;
+  --ns-card2:   #1c1c1c;
+  --ns-border:  rgba(255, 255, 255, 0.08);
+  --ns-border2: rgba(255, 255, 255, 0.15);
+  --ns-muted:   rgba(255, 255, 255, 0.42);
+  --ns-text:    #ffffff;
+  --ns-text2:   rgba(255, 255, 255, 0.72);
+  --ns-on-accent: #000000;
 }
 
 /* ═══════════════════════════════════════════
@@ -413,7 +457,7 @@ body {
   transition: all 0.18s;
 }
 .ns-btn:active { transform: scale(0.97); }
-.ns-btn-primary { background: var(--ns-g); color: #000; }
+.ns-btn-primary { background: var(--ns-g); color: var(--ns-on-accent); }
 .ns-btn-primary:hover { background: var(--ns-g2); }
 .ns-btn-dark { background: var(--ns-card2); color: var(--ns-text); border: 1px solid var(--ns-border); }
 .ns-btn-dark:hover { border-color: var(--ns-border2); }
@@ -627,9 +671,9 @@ body {
   font-size: 10px; font-weight: 700;
   padding: 3px 10px; border-radius: 100px; border: 1px solid;
 }
-.ns-badge-green  { color: var(--ns-g); border-color: rgba(0,255,133,0.35); background: rgba(0,255,133,0.08); }
-.ns-badge-yellow { color: var(--ns-y); border-color: rgba(255,212,0,0.35); background: rgba(255,212,0,0.08); }
-.ns-badge-red    { color: var(--ns-r); border-color: rgba(255,59,92,0.35);  background: rgba(255,59,92,0.08); }
+.ns-badge-green  { color: var(--ns-g); border-color: color-mix(in srgb, var(--ns-g) 35%, transparent); background: color-mix(in srgb, var(--ns-g) 8%, transparent); }
+.ns-badge-yellow { color: var(--ns-y); border-color: color-mix(in srgb, var(--ns-y) 35%, transparent); background: color-mix(in srgb, var(--ns-y) 8%, transparent); }
+.ns-badge-red    { color: var(--ns-r); border-color: color-mix(in srgb, var(--ns-r) 35%, transparent); background: color-mix(in srgb, var(--ns-r) 8%, transparent); }
 
 /* ═══════════════════════════════════════════
    NS PAGE HEADER + BACK BTN
@@ -983,9 +1027,9 @@ body {
   position: absolute; left: 50%; bottom: 86px;
   transform: translateX(-50%); z-index: 40;
   padding: 12px 18px; border-radius: 999px;
-  font-size: 14px; font-weight: 700; color: #06110b;
-  background: linear-gradient(135deg, rgba(50,240,106,0.95), rgba(24,207,89,0.95));
-  box-shadow: var(--shadow-green);
+  font-size: 14px; font-weight: 700; color: var(--ns-on-accent);
+  background: linear-gradient(135deg, var(--ns-g), var(--ns-g2));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   animation: toastFade 1.8s ease;
   white-space: nowrap;
 }
@@ -1205,4 +1249,3 @@ select.ns-input option { background: #1a1a18; }
   font-size: 12px; color: var(--ns-r);
   margin: 5px 0 0; font-weight: 600;
 }
-

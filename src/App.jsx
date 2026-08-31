@@ -1,5 +1,5 @@
 import "./App.css";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useReducer } from "react";
 import Home from "./screens/Home";
 import CreateTrip from "./screens/Createtrip";
 import TripDetail from "./screens/Tripdetail";
@@ -22,8 +22,9 @@ import EditExpense from "./screens/Editexpense";
 import Navbar from "./components/Navbar";
 import ExportSummary from "./screens/ExportSummary";
 import LandingPage from "./screens/LandingPage";
-import { db } from "./firebase";
+import { db, auth } from "./firebase";
 import { ref, onValue, set, remove } from "firebase/database";
+import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
 
 const normalizeBill = (bill) => {
   const sharedBy = Array.isArray(bill.sharedBy) ? bill.sharedBy : [];
@@ -44,20 +45,100 @@ const normalizeBill = (bill) => {
   };
 };
 
-function App() {
-  const [page, setPage] = useState("splash");
-  const [toast, setToast] = useState("");
-  const [editingExpense, setEditingExpense] = useState(null);
-  const [selectedBill, setSelectedBill] = useState(null);
-  const [showLanding, setShowLanding] = useState(true);
-  const [userPoints, setUserPoints] = useState(0);
+// ── UI reducer ──
+// Groups the screens-and-modals state that used to be five separate
+// useState calls (page, toast, editingExpense, selectedBill, showLanding).
+// These all change together as the user navigates, so one reducer keeps
+// each transition atomic and easy to follow in one place.
+const initialUiState = {
+  page: "splash",
+  toast: "",
+  editingExpense: null,
+  selectedBill: null,
+  showLanding: true,
+};
 
-  // ── Active trip state ──
-  const [currentTripId, setCurrentTripId] = useState(null);
-  const [trips, setTrips] = useState([]);
-  const [tripBills, setTripBills] = useState([]);
-  const [tripMembers, setTripMembers] = useState([]);
-  const [currentTrip, setCurrentTrip] = useState(null);
+function uiReducer(state, action) {
+  switch (action.type) {
+    case "NAVIGATE":
+      return { ...state, page: action.page };
+    case "SET_TOAST":
+      return { ...state, toast: action.message };
+    case "SET_SELECTED_BILL":
+      return { ...state, selectedBill: action.bill };
+    case "SET_EDITING_EXPENSE":
+      return { ...state, editingExpense: action.expense };
+    case "ENTER_APP":
+      return { ...state, showLanding: false };
+    default:
+      return state;
+  }
+}
+
+// ── Trip reducer ──
+// Groups everything loaded from/about the active trip (trips list,
+// currentTripId, currentTrip, tripBills, tripMembers) — previously five
+// separate useState calls that always changed in step with each other
+// (e.g. deleting the active trip has to reset four of them at once).
+const initialTripState = {
+  trips: [],
+  currentTripId: null,
+  currentTrip: null,
+  tripBills: [],
+  tripMembers: [],
+};
+
+function tripReducer(state, action) {
+  switch (action.type) {
+    case "SET_TRIPS":
+      return { ...state, trips: action.trips };
+    case "REMOVE_TRIP_FROM_LIST":
+      return { ...state, trips: state.trips.filter((t) => t.id !== action.id) };
+    case "SET_CURRENT_TRIP_ID":
+      return { ...state, currentTripId: action.id };
+    case "SET_CURRENT_TRIP":
+      return { ...state, currentTrip: action.trip };
+    case "SET_TRIP_BILLS":
+      return { ...state, tripBills: action.bills };
+    case "SET_TRIP_MEMBERS":
+      return { ...state, tripMembers: action.members };
+    case "CLEAR_CURRENT_TRIP":
+      return { ...state, currentTripId: null, currentTrip: null, tripBills: [], tripMembers: [] };
+    default:
+      return state;
+  }
+}
+
+function App() {
+  const [ui, dispatchUi] = useReducer(uiReducer, initialUiState);
+  const { page, toast, editingExpense, selectedBill, showLanding } = ui;
+
+  const [trip, dispatchTrip] = useReducer(tripReducer, initialTripState);
+  const { trips, currentTripId, currentTrip, tripBills, tripMembers } = trip;
+
+  const [userPoints, setUserPoints] = useState(0);
+  const [authReady, setAuthReady] = useState(false);
+  const [theme, setThemeState] = useState(() => {
+    try {
+      return localStorage.getItem("neosplitTheme") || "neon";
+    } catch {
+      return "neon";
+    }
+  });
+
+  const setTheme = (t) => {
+    setThemeState(t);
+    try {
+      localStorage.setItem("neosplitTheme", t);
+    } catch {}
+  };
+
+  // ── Thin wrappers so every screen keeps calling setPage/setToast/etc.
+  // exactly as before — only the storage underneath changed. ──
+  const setPage = (p) => dispatchUi({ type: "NAVIGATE", page: p });
+  const setToast = (message) => dispatchUi({ type: "SET_TOAST", message });
+  const setSelectedBill = (bill) => dispatchUi({ type: "SET_SELECTED_BILL", bill });
+  const setEditingExpense = (expense) => dispatchUi({ type: "SET_EDITING_EXPENSE", expense });
 
   const [userProfile, setUserProfile] = useState(() => {
     try {
@@ -75,49 +156,67 @@ function App() {
     const params = new URLSearchParams(window.location.search);
     const invitedTripId = params.get("trip");
     if (invitedTripId) {
-      setCurrentTripId(invitedTripId);
+      dispatchTrip({ type: "SET_CURRENT_TRIP_ID", id: invitedTripId });
       localStorage.setItem("lastTripId", invitedTripId);
       window.history.replaceState({}, "", window.location.pathname);
     } else {
       const saved = localStorage.getItem("lastTripId");
-      if (saved) setCurrentTripId(saved);
+      if (saved) dispatchTrip({ type: "SET_CURRENT_TRIP_ID", id: saved });
     }
+  }, []);
+
+  // ── Sign in anonymously so Firebase rules can require auth ──
+  // This is invisible to the user — no login screen, just a background
+  // device identity so the database can reject requests with no auth token.
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setAuthReady(true);
+      } else {
+        signInAnonymously(auth).catch((err) => {
+          console.error("Anonymous sign-in failed:", err);
+        });
+      }
+    });
+    return () => unsub();
   }, []);
 
   // ── Load all trips list ──
   useEffect(() => {
+    if (!authReady) return;
     const unsub = onValue(ref(db, "trips"), (snap) => {
       const data = snap.val();
-      setTrips(data ? Object.values(data) : []);
+      dispatchTrip({ type: "SET_TRIPS", trips: data ? Object.values(data) : [] });
     });
     return () => unsub();
-  }, []);
+  }, [authReady]);
 
   // ── Load current trip data when tripId changes ──
   useEffect(() => {
-    if (!currentTripId) return;
+    if (!authReady || !currentTripId) return;
     const unsubTrip = onValue(ref(db, `trips/${currentTripId}`), (snap) => {
       const data = snap.val();
-      if (data) setCurrentTrip(data);
+      if (data) dispatchTrip({ type: "SET_CURRENT_TRIP", trip: data });
     });
     const unsubBills = onValue(ref(db, `trips/${currentTripId}/bills`), (snap) => {
       const data = snap.val();
-      setTripBills(data ? Object.values(data).map(normalizeBill) : []);
+      dispatchTrip({ type: "SET_TRIP_BILLS", bills: data ? Object.values(data).map(normalizeBill) : [] });
     });
     const unsubMembers = onValue(ref(db, `trips/${currentTripId}/members`), (snap) => {
       const data = snap.val();
-      setTripMembers(data ? Object.values(data) : []);
+      dispatchTrip({ type: "SET_TRIP_MEMBERS", members: data ? Object.values(data) : [] });
     });
     return () => { unsubTrip(); unsubBills(); unsubMembers(); };
-  }, [currentTripId]);
+  }, [authReady, currentTripId]);
 
   // ── Load points ──
   useEffect(() => {
+    if (!authReady) return;
     const unsub = onValue(ref(db, "userPoints"), (snap) => {
       if (snap.val() !== null) setUserPoints(Number(snap.val()) || 0);
     });
     return () => unsub();
-  }, []);
+  }, [authReady]);
 
   useEffect(() => {
     localStorage.setItem("neosplitProfile", JSON.stringify(userProfile));
@@ -157,25 +256,23 @@ function App() {
       newTrip.memberList.forEach((m, i) => { membersObj[i] = m; });
       set(ref(db, `trips/${id}/members`), membersObj);
     }
-    setCurrentTripId(id);
+    dispatchTrip({ type: "SET_CURRENT_TRIP_ID", id });
     localStorage.setItem("lastTripId", id);
     setToast("Trip created! 🚀");
   };
 
   const deleteTrip = (id) => {
     remove(ref(db, `trips/${id}`));
-    setTrips((prev) => prev.filter((t) => t.id !== id));
+    dispatchTrip({ type: "REMOVE_TRIP_FROM_LIST", id });
     if (currentTripId === id) {
-      setCurrentTripId(null);
-      setTripBills([]);
-      setTripMembers([]);
+      dispatchTrip({ type: "CLEAR_CURRENT_TRIP" });
       localStorage.removeItem("lastTripId");
     }
     setToast("Trip deleted");
   };
 
   const selectTrip = (id) => {
-    setCurrentTripId(id);
+    dispatchTrip({ type: "SET_CURRENT_TRIP_ID", id });
     localStorage.setItem("lastTripId", id);
     setPage("tripdetail");
   };
@@ -205,7 +302,9 @@ function App() {
     if (!currentTripId) return;
     const bill = tripBills.find((b) => b.id === billId);
     if (bill) set(ref(db, `trips/${currentTripId}/bills/${billId}`), { ...bill, status: "Finished" });
-    setSelectedBill((prev) => (prev?.id === billId ? { ...prev, status: "Finished" } : prev));
+    if (selectedBill?.id === billId) {
+      setSelectedBill({ ...selectedBill, status: "Finished" });
+    }
     setToast("Bill settled ✅");
   };
 
@@ -246,6 +345,44 @@ function App() {
     if (currentTripId) set(ref(db, `trips/${currentTripId}/members`), membersObj);
   };
 
+  const editMember = (oldName, newName) => {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName || !currentTripId) return;
+
+    const isDuplicate = tripMembers.some(
+      (m) => m !== oldName && m.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (isDuplicate) {
+      setToast("That name is already used");
+      return;
+    }
+
+    const newMembers = tripMembers.map((m) => (m === oldName ? trimmed : m));
+    const membersObj = {};
+    newMembers.forEach((m, i) => { membersObj[i] = m; });
+    set(ref(db, `trips/${currentTripId}/members`), membersObj);
+
+    // Cascade the rename into existing bills so past bills don't keep
+    // pointing at a name that no longer exists in the trip.
+    tripBills.forEach((bill) => {
+      let changed = false;
+      const updated = { ...bill };
+      if (updated.paidBy === oldName) {
+        updated.paidBy = trimmed;
+        changed = true;
+      }
+      if (Array.isArray(updated.sharedBy) && updated.sharedBy.includes(oldName)) {
+        updated.sharedBy = updated.sharedBy.map((n) => (n === oldName ? trimmed : n));
+        changed = true;
+      }
+      if (changed) {
+        set(ref(db, `trips/${currentTripId}/bills/${updated.id}`), updated);
+      }
+    });
+
+    setToast(`Renamed to ${trimmed}`);
+  };
+
   const removeMember = (name) => {
     const newMembers = tripMembers.filter((m) => m !== name);
     const membersObj = {};
@@ -267,7 +404,7 @@ function App() {
       case "home":            return <Home {...p} userProfile={userProfile} trips={trips} currentTripId={currentTripId} selectTrip={selectTrip} deleteTrip={deleteTrip} />;
       case "create":          return <CreateTrip setPage={setPage} addTrip={addTrip} />;
       case "tripdetail":      return <TripDetail {...p} deleteExpense={deleteExpense} startEditExpense={startEditExpense} deleteTrip={deleteTrip} currentTrip={currentTrip} currentTripId={currentTripId} getInviteLink={getInviteLink} />;
-      case "addexpense":      return <AddExpense {...p} addExpense={addExpense} addMember={addMember} removeMember={removeMember} />;
+      case "addexpense":      return <AddExpense {...p} addExpense={addExpense} addMember={addMember} removeMember={removeMember} editMember={editMember} />;
       case "editexpense":     return <EditExpense {...p} editingExpense={editingExpense} updateExpense={updateExpense} />;
       case "receipt":         return <Bills {...p} setSelectedBill={setSelectedBill} />;
       case "billhistory":     return <BillHistory {...p} setSelectedBill={setSelectedBill} />;
@@ -275,7 +412,7 @@ function App() {
       case "settlement":      return <Settlement {...p} settleAllBills={settleAllBills} selectedBill={selectedBill} onSettleAndEarnPoints={addPoints} />;
       case "splitbill":       return <SplitBill setPage={setPage} tripBills={tripBills} tripMembers={tripMembers} setSelectedBill={setSelectedBill} />;
       case "splitcalculator": return <SplitCalculator setPage={setPage} selectedBill={selectedBill} />;
-      case "profile":         return <Profile setPage={setPage} userProfile={userProfile} setUserProfile={setUserProfile} />;
+      case "profile":         return <Profile setPage={setPage} userProfile={userProfile} setUserProfile={setUserProfile} theme={theme} setTheme={setTheme} />;
       case "trophy":
       case "leaderboard":     return <Leaderboard setPage={setPage} userPoints={userPoints} userProfile={userProfile} tripMembers={tripMembers} />;
       case "mypoints":        return <MyPoints setPage={setPage} userPoints={userPoints} />;
@@ -289,9 +426,9 @@ function App() {
   };
 
   return (
-    <div className="app-bg">
+    <div className="app-bg" data-theme={theme}>
       {showLanding ? (
-        <LandingPage onEnter={() => setShowLanding(false)} />
+        <LandingPage onEnter={() => dispatchUi({ type: "ENTER_APP" })} />
       ) : (
         <div className="phone-shell">
           <div className="phone-frame">
