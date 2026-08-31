@@ -1,7 +1,7 @@
 import React from "react";
 import "../App.css";
  
-function BillDetail({ setPage, selectedBill, markBillAsSettled }) {
+function BillDetail({ setPage, selectedBill, markBillAsSettled, startEditExpense }) {
  
   if (!selectedBill) {
     return (
@@ -106,6 +106,12 @@ function BillDetail({ setPage, selectedBill, markBillAsSettled }) {
  
       {/* ── Actions ── */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
+        <button
+          className="ns-btn ns-btn-dark"
+          onClick={() => startEditExpense && startEditExpense(selectedBill)}
+        >
+          ✏️ Edit Bill
+        </button>
         <button className="ns-btn ns-btn-dark" onClick={() => setPage("settlement")}>
           View Settlement
         </button>

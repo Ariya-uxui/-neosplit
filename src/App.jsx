@@ -417,7 +417,7 @@ function App() {
       case "editexpense":     return <EditExpense {...p} editingExpense={editingExpense} updateExpense={updateExpense} />;
       case "receipt":         return <Bills {...p} setSelectedBill={setSelectedBill} />;
       case "billhistory":     return <BillHistory {...p} setSelectedBill={setSelectedBill} />;
-      case "billdetail":      return <BillDetail {...p} selectedBill={selectedBill} markBillAsSettled={markBillAsSettled} />;
+      case "billdetail":      return <BillDetail {...p} selectedBill={selectedBill} markBillAsSettled={markBillAsSettled} startEditExpense={startEditExpense} />;
       case "settlement":      return <Settlement {...p} settleAllBills={settleAllBills} selectedBill={selectedBill} onSettleAndEarnPoints={addPoints} />;
       case "splitbill":       return <SplitBill setPage={setPage} tripBills={tripBills} tripMembers={tripMembers} setSelectedBill={setSelectedBill} />;
       case "splitcalculator": return <SplitCalculator setPage={setPage} selectedBill={selectedBill} />;
