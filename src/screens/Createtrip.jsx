@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import "../App.css";
  
-function CreateTrip({ setPage, addTrip }) {
+function CreateTrip({ setPage, addTrip, userProfile }) {
+  const creatorName = userProfile?.name?.trim();
   const [tripName, setTripName] = useState("");
   const [date, setDate] = useState("");
   const [location, setLocation] = useState("");
   const [memberInput, setMemberInput] = useState("");
-  const [members, setMembers] = useState([]);
+  const [members, setMembers] = useState(() => (creatorName ? [creatorName] : []));
   const [errors, setErrors] = useState({});
  
   const addMember = () => {
@@ -37,7 +38,7 @@ function CreateTrip({ setPage, addTrip }) {
  
   const handleSave = () => {
     if (!validate()) return;
-    addTrip({ title: tripName, members: members.length, memberList: members, total: "0", date, location });
+    addTrip({ title: tripName, members: members.length, memberList: members, total: "0", date, location, creator: creatorName || "" });
     setPage("home");
   };
  
@@ -75,6 +76,9 @@ function CreateTrip({ setPage, addTrip }) {
       {/* ── Members ── */}
       <div className="ns-card">
         <label className="ns-input-label">Members ({members.length})</label>
+        <div style={{ fontSize: 12, color: "var(--ns-muted)", marginBottom: 10, marginTop: -4 }}>
+          Add everyone joining this trip.
+        </div>
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
           <input
             className="ns-input"
@@ -89,7 +93,7 @@ function CreateTrip({ setPage, addTrip }) {
             onClick={addMember}
             style={{
               padding: "0 16px", borderRadius: 12, flexShrink: 0,
-              background: "rgba(0,255,133,0.15)", border: "1px solid rgba(0,255,133,0.3)",
+              background: "color-mix(in srgb, var(--ns-g) 15%, transparent)", border: "1px solid color-mix(in srgb, var(--ns-g) 30%, transparent)",
               color: "var(--ns-g)", fontWeight: 800, fontSize: 18, cursor: "pointer",
             }}
           >+</button>
@@ -103,10 +107,10 @@ function CreateTrip({ setPage, addTrip }) {
             <div key={m} style={{
               display: "flex", alignItems: "center", gap: 6,
               padding: "6px 12px", borderRadius: 100,
-              background: "rgba(0,255,133,0.1)", border: "1px solid rgba(0,255,133,0.25)",
+              background: "color-mix(in srgb, var(--ns-g) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--ns-g) 25%, transparent)",
               fontSize: 13, fontWeight: 600, color: "var(--ns-g)",
             }}>
-              {m}
+              {m}{m === creatorName ? " (you)" : ""}
               <button
                 type="button"
                 onClick={() => removeMember(m)}
@@ -120,10 +124,10 @@ function CreateTrip({ setPage, addTrip }) {
       {/* ── Preview ── */}
       {(tripName || location || members.length > 0) && (
         <div className="ns-card" style={{
-          background: "linear-gradient(135deg, rgba(0,255,133,0.08), rgba(0,255,133,0.02))",
-          border: "1px solid rgba(0,255,133,0.2)", marginBottom: 14,
+          background: "linear-gradient(135deg, color-mix(in srgb, var(--ns-g) 8%, transparent), color-mix(in srgb, var(--ns-g) 2%, transparent))",
+          border: "1px solid color-mix(in srgb, var(--ns-g) 20%, transparent)", marginBottom: 14,
         }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(0,255,133,0.7)", marginBottom: 8 }}>Preview</div>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "color-mix(in srgb, var(--ns-g) 70%, transparent)", marginBottom: 8 }}>Preview</div>
           <div style={{ fontFamily: "var(--ns-syne)", fontSize: 20, fontWeight: 800, color: "var(--ns-text)", marginBottom: 6 }}>
             {tripName || "Your trip name"}
           </div>

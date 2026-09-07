@@ -7,6 +7,7 @@ import Bills from "./screens/Bills";
 import BillHistory from "./screens/Billhistory";
 import BillDetail from "./screens/Billdetail";
 import Rewards from "./screens/Rewards";
+import CreateReward from "./screens/CreateReward";
 import Profile from "./screens/Profile";
 import Settlement from "./screens/Settlement";
 import Pay from "./screens/Pay";
@@ -23,7 +24,7 @@ import Navbar from "./components/Navbar";
 import ExportSummary from "./screens/ExportSummary";
 import LandingPage from "./screens/LandingPage";
 import { db, auth } from "./firebase";
-import { ref, onValue, set, remove } from "firebase/database";
+import { ref, onValue, set, remove, runTransaction } from "firebase/database";
 import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
 
 const normalizeBill = (bill) => {
@@ -55,6 +56,7 @@ const initialUiState = {
   toast: "",
   editingExpense: null,
   selectedBill: null,
+  selectedRedeem: null,
   showLanding: false,
 };
 
@@ -66,6 +68,8 @@ function uiReducer(state, action) {
       return { ...state, toast: action.message };
     case "SET_SELECTED_BILL":
       return { ...state, selectedBill: action.bill };
+    case "SET_SELECTED_REDEEM":
+      return { ...state, selectedRedeem: action.redeem };
     case "SET_EDITING_EXPENSE":
       return { ...state, editingExpense: action.expense };
     case "ENTER_APP":
@@ -86,6 +90,8 @@ const initialTripState = {
   currentTrip: null,
   tripBills: [],
   tripMembers: [],
+  tripRewards: [],
+  tripRedeems: [],
 };
 
 function tripReducer(state, action) {
@@ -102,8 +108,12 @@ function tripReducer(state, action) {
       return { ...state, tripBills: action.bills };
     case "SET_TRIP_MEMBERS":
       return { ...state, tripMembers: action.members };
+    case "SET_TRIP_REWARDS":
+      return { ...state, tripRewards: action.rewards };
+    case "SET_TRIP_REDEEMS":
+      return { ...state, tripRedeems: action.redeems };
     case "CLEAR_CURRENT_TRIP":
-      return { ...state, currentTripId: null, currentTrip: null, tripBills: [], tripMembers: [] };
+      return { ...state, currentTripId: null, currentTrip: null, tripBills: [], tripMembers: [], tripRewards: [], tripRedeems: [] };
     default:
       return state;
   }
@@ -111,12 +121,13 @@ function tripReducer(state, action) {
 
 function App() {
   const [ui, dispatchUi] = useReducer(uiReducer, initialUiState);
-  const { page, toast, editingExpense, selectedBill, showLanding } = ui;
+  const { page, toast, editingExpense, selectedBill, selectedRedeem, showLanding } = ui;
 
   const [trip, dispatchTrip] = useReducer(tripReducer, initialTripState);
-  const { trips, currentTripId, currentTrip, tripBills, tripMembers } = trip;
+  const { trips, currentTripId, currentTrip, tripBills, tripMembers, tripRewards, tripRedeems } = trip;
 
   const [userPoints, setUserPoints] = useState(0);
+  const [tripPoints, setTripPoints] = useState(0);
   const [authReady, setAuthReady] = useState(false);
   const [theme, setThemeState] = useState(() => {
     try {
@@ -138,6 +149,7 @@ function App() {
   const setPage = (p) => dispatchUi({ type: "NAVIGATE", page: p });
   const setToast = (message) => dispatchUi({ type: "SET_TOAST", message });
   const setSelectedBill = (bill) => dispatchUi({ type: "SET_SELECTED_BILL", bill });
+  const setSelectedRedeem = (redeem) => dispatchUi({ type: "SET_SELECTED_REDEEM", redeem });
   const setEditingExpense = (expense) => dispatchUi({ type: "SET_EDITING_EXPENSE", expense });
 
   const [userProfile, setUserProfile] = useState(() => {
@@ -206,10 +218,20 @@ function App() {
       const data = snap.val();
       dispatchTrip({ type: "SET_TRIP_MEMBERS", members: data ? Object.values(data) : [] });
     });
-    return () => { unsubTrip(); unsubBills(); unsubMembers(); };
+    const unsubRewards = onValue(ref(db, `trips/${currentTripId}/rewards`), (snap) => {
+      const data = snap.val();
+      dispatchTrip({ type: "SET_TRIP_REWARDS", rewards: data ? Object.values(data) : [] });
+    });
+    const unsubRedeems = onValue(ref(db, `trips/${currentTripId}/redeemRequests`), (snap) => {
+      const data = snap.val();
+      dispatchTrip({ type: "SET_TRIP_REDEEMS", redeems: data ? Object.values(data) : [] });
+    });
+    return () => { unsubTrip(); unsubBills(); unsubMembers(); unsubRewards(); unsubRedeems(); };
   }, [authReady, currentTripId]);
 
   // ── Load points ──
+  // "userPoints" is GLOBAL lifetime XP — drives the Level shown in My
+  // Points, and only ever goes up (redeeming a reward never lowers it).
   useEffect(() => {
     if (!authReady) return;
     const unsub = onValue(ref(db, "userPoints"), (snap) => {
@@ -217,6 +239,19 @@ function App() {
     });
     return () => unsub();
   }, [authReady]);
+
+  // "tripPoints" is scoped to the ACTIVE trip — this is the currency the
+  // Leaderboard ranks by and Rewards spends. Separate pool per trip.
+  useEffect(() => {
+    if (!authReady || !currentTripId || !userProfile?.name) {
+      setTripPoints(0);
+      return;
+    }
+    const unsub = onValue(ref(db, `trips/${currentTripId}/memberPoints/${userProfile.name}`), (snap) => {
+      setTripPoints(Number(snap.val()) || 0);
+    });
+    return () => unsub();
+  }, [authReady, currentTripId, userProfile?.name]);
 
   useEffect(() => {
     localStorage.setItem("neosplitProfile", JSON.stringify(userProfile));
@@ -229,20 +264,21 @@ function App() {
   }, [toast]);
 
   // ── Points ──
+  // Every point-earning action credits BOTH pools: global XP (permanent,
+  // for Level) and this trip's shared point pool (spendable, for that
+  // trip's Leaderboard/Rewards). The trip-scoped write uses a transaction
+  // since multiple members can earn points around the same time.
   const addPoints = (pts) => {
     setUserPoints((prev) => {
       const updated = prev + pts;
       set(ref(db, "userPoints"), updated);
       return updated;
     });
-  };
-
-  const spendPoints = (pts) => {
-    setUserPoints((prev) => {
-      const updated = Math.max(0, prev - pts);
-      set(ref(db, "userPoints"), updated);
-      return updated;
-    });
+    if (currentTripId && userProfile?.name) {
+      runTransaction(ref(db, `trips/${currentTripId}/memberPoints/${userProfile.name}`), (current) => {
+        return (current || 0) + pts;
+      });
+    }
   };
 
   // ── Trip actions ──
@@ -286,6 +322,62 @@ function App() {
     setPage("tripdetail");
   };
 
+  // ── Gang Rewards (per-trip, creator-only creation) ──
+  const addReward = ({ name, icon, points, description }) => {
+    if (!currentTripId) return;
+    const id = Date.now().toString();
+    const reward = {
+      id, name, icon: icon || "🎁", points: Number(points) || 0,
+      description: description || "",
+    };
+    set(ref(db, `trips/${currentTripId}/rewards/${id}`), reward).catch((err) => {
+      console.error("Failed to save reward:", err);
+      setToast("Couldn't save reward");
+    });
+    setToast("Reward created 🎉");
+  };
+
+  // Any member can request — this just files a Pending request.
+  // Points are NOT deducted until the trip creator confirms it below.
+  const requestRedeem = (reward) => {
+    if (!currentTripId || !userProfile?.name) return;
+    const id = Date.now().toString();
+    const request = {
+      id,
+      memberName: userProfile.name,
+      rewardId: reward.id,
+      rewardName: reward.name,
+      icon: reward.icon,
+      points: reward.points,
+      status: "Pending",
+      requestedAt: id,
+    };
+    set(ref(db, `trips/${currentTripId}/redeemRequests/${id}`), request).catch((err) => {
+      console.error("Failed to request redeem:", err);
+      setToast("Couldn't send request");
+    });
+    setToast("Redeem requested — waiting for confirmation ⏳");
+  };
+
+  // Creator-only: deducts points from the trip's shared pool and marks
+  // the request Confirmed. This never touches global XP — redeeming a
+  // reward spends the trip's points, it doesn't lower anyone's Level.
+  const confirmRedeem = (redeemId) => {
+    if (!currentTripId) return;
+    const request = tripRedeems.find((r) => r.id === redeemId);
+    if (!request || request.status === "Confirmed") return;
+
+    runTransaction(ref(db, `trips/${currentTripId}/memberPoints/${request.memberName}`), (current) => {
+      return (current || 0) - request.points;
+    }).then(() => {
+      set(ref(db, `trips/${currentTripId}/redeemRequests/${redeemId}/status`), "Confirmed");
+      setToast(`Confirmed ${request.memberName}'s redeem ✓`);
+    }).catch((err) => {
+      console.error("Failed to confirm redeem:", err);
+      setToast("Couldn't confirm redeem");
+    });
+  };
+
   // ── Expense actions ──
   const addExpense = (newExpense) => {
     if (!currentTripId) return;
@@ -303,18 +395,8 @@ function App() {
       sharedBy,
     };
     set(ref(db, `trips/${currentTripId}/bills/${id}`), bill);
-    addPoints(5);
-    setToast("Expense added ✓ +5 pts");
-  };
-
-  const markBillAsSettled = (billId) => {
-    if (!currentTripId) return;
-    const bill = tripBills.find((b) => b.id === billId);
-    if (bill) set(ref(db, `trips/${currentTripId}/bills/${billId}`), { ...bill, status: "Finished" });
-    if (selectedBill?.id === billId) {
-      setSelectedBill({ ...selectedBill, status: "Finished" });
-    }
-    setToast("Bill settled ✅");
+    addPoints(2);
+    setToast("Expense added ✓ +2 pts");
   };
 
   const deleteExpense = (id) => {
@@ -411,22 +493,23 @@ function App() {
     switch (page) {
       case "splash":          return <Splash setPage={setPage} />;
       case "home":            return <Home {...p} userProfile={userProfile} trips={trips} currentTripId={currentTripId} selectTrip={selectTrip} deleteTrip={deleteTrip} />;
-      case "create":          return <CreateTrip setPage={setPage} addTrip={addTrip} />;
+      case "create":          return <CreateTrip setPage={setPage} addTrip={addTrip} userProfile={userProfile} />;
       case "tripdetail":      return <TripDetail {...p} deleteExpense={deleteExpense} startEditExpense={startEditExpense} deleteTrip={deleteTrip} currentTrip={currentTrip} currentTripId={currentTripId} getInviteLink={getInviteLink} />;
       case "addexpense":      return <AddExpense {...p} addExpense={addExpense} addMember={addMember} removeMember={removeMember} editMember={editMember} />;
       case "editexpense":     return <EditExpense {...p} editingExpense={editingExpense} updateExpense={updateExpense} />;
       case "receipt":         return <Bills {...p} setSelectedBill={setSelectedBill} />;
       case "billhistory":     return <BillHistory {...p} setSelectedBill={setSelectedBill} />;
-      case "billdetail":      return <BillDetail {...p} selectedBill={selectedBill} markBillAsSettled={markBillAsSettled} startEditExpense={startEditExpense} />;
+      case "billdetail":      return <BillDetail {...p} selectedBill={selectedBill} startEditExpense={startEditExpense} />;
       case "settlement":      return <Settlement {...p} settleAllBills={settleAllBills} selectedBill={selectedBill} onSettleAndEarnPoints={addPoints} />;
       case "splitbill":       return <SplitBill setPage={setPage} tripBills={tripBills} tripMembers={tripMembers} setSelectedBill={setSelectedBill} />;
       case "splitcalculator": return <SplitCalculator setPage={setPage} selectedBill={selectedBill} />;
       case "profile":         return <Profile setPage={setPage} userProfile={userProfile} setUserProfile={setUserProfile} theme={theme} setTheme={setTheme} />;
       case "trophy":
-      case "leaderboard":     return <Leaderboard setPage={setPage} userPoints={userPoints} userProfile={userProfile} tripMembers={tripMembers} />;
+      case "leaderboard":     return <Leaderboard setPage={setPage} currentTripId={currentTripId} currentTrip={currentTrip} userProfile={userProfile} tripMembers={tripMembers} />;
       case "mypoints":        return <MyPoints setPage={setPage} userPoints={userPoints} />;
-      case "rewardslist":     return <Rewards setPage={setPage} userPoints={userPoints} onRedeem={spendPoints} />;
-      case "yourredeem":      return <YourRedeem setPage={setPage} />;
+      case "rewardslist":     return <Rewards setPage={setPage} userPoints={tripPoints} tripRewards={tripRewards} tripRedeems={tripRedeems} currentTrip={currentTrip} userProfile={userProfile} requestRedeem={requestRedeem} confirmRedeem={confirmRedeem} setSelectedRedeem={setSelectedRedeem} />;
+      case "createreward":    return <CreateReward setPage={setPage} addReward={addReward} />;
+      case "yourredeem":      return <YourRedeem setPage={setPage} selectedRedeem={selectedRedeem} />;
       case "pay":             return <Pay setPage={setPage} pointsEarned={userPoints} tripBills={tripBills} tripMembers={tripMembers} />;
       case "exportsummary":   return <ExportSummary setPage={setPage} tripBills={tripBills} tripMembers={tripMembers} userProfile={userProfile} />;
       case "thankyou":        return <ThankYou setPage={setPage} userProfile={userProfile} pointsEarned={userPoints} />;

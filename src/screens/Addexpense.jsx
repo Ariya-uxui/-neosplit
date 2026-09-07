@@ -45,19 +45,19 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
       setEditError("");
     }
   };
- 
+
   const startEditMember = (member) => {
     setEditingMember(member);
     setEditValue(member);
     setEditError("");
   };
- 
+
   const cancelEditMember = () => {
     setEditingMember(null);
     setEditValue("");
     setEditError("");
   };
- 
+
   const saveEditMember = () => {
     const trimmed = editValue.trim();
     if (!trimmed) {
@@ -184,7 +184,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
                         padding: "4px 6px 4px 10px",
                         borderRadius: 100,
                         background: "var(--ns-card2)",
-                        border: "1px solid rgba(0,255,133,0.4)",
+                        border: "1px solid color-mix(in srgb, var(--ns-g) 40%, transparent)",
                       }}
                     >
                       <input
@@ -280,7 +280,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
                           background: "none",
                           border: "none",
                           cursor: "pointer",
-                          color: "rgba(255,59,92,0.7)",
+                          color: "color-mix(in srgb, var(--ns-r) 70%, transparent)",
                           fontSize: 16,
                           lineHeight: 1,
                           padding: "0 0 0 2px",
@@ -301,8 +301,8 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
                     padding: "5px 12px",
                     borderRadius: 100,
                     cursor: "pointer",
-                    background: showAddMember ? "rgba(0,255,133,0.12)" : "var(--ns-card2)",
-                    border: `1px solid ${showAddMember ? "rgba(0,255,133,0.4)" : "var(--ns-border)"}`,
+                    background: showAddMember ? "color-mix(in srgb, var(--ns-g) 12%, transparent)" : "var(--ns-card2)",
+                    border: `1px solid ${showAddMember ? "color-mix(in srgb, var(--ns-g) 40%, transparent)" : "var(--ns-border)"}`,
                     color: showAddMember ? "var(--ns-g)" : "var(--ns-muted)",
                     fontSize: 12,
                     fontWeight: 700,
@@ -335,8 +335,8 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
                       padding: "10px 16px",
                       borderRadius: 12,
                       cursor: "pointer",
-                      background: "rgba(0,255,133,0.15)",
-                      border: "1px solid rgba(0,255,133,0.3)",
+                      background: "color-mix(in srgb, var(--ns-g) 15%, transparent)",
+                      border: "1px solid color-mix(in srgb, var(--ns-g) 30%, transparent)",
                       color: "var(--ns-g)",
                       fontSize: 13,
                       fontWeight: 700,
@@ -347,7 +347,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
                   </button>
                 </div>
               )}
- 
+
               {editError && (
                 <div style={{ fontSize: 11, color: "var(--ns-r)", marginTop: 6 }}>
                   {editError}
@@ -368,8 +368,8 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
                   style={{
                     padding: "7px 14px",
                     borderRadius: 100,
-                    border: `1px solid ${category === c.id ? "rgba(0,255,133,0.4)" : "var(--ns-border)"}`,
-                    background: category === c.id ? "rgba(0,255,133,0.1)" : "var(--ns-card2)",
+                    border: `1px solid ${category === c.id ? "color-mix(in srgb, var(--ns-g) 40%, transparent)" : "var(--ns-border)"}`,
+                    background: category === c.id ? "color-mix(in srgb, var(--ns-g) 10%, transparent)" : "var(--ns-card2)",
                     color: category === c.id ? "var(--ns-g)" : "var(--ns-text2)",
                     fontSize: 12,
                     fontWeight: 600,
@@ -399,8 +399,8 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
                   style={{
                     padding: "7px 14px",
                     borderRadius: 100,
-                    border: `1px solid ${sharedBy.includes(m) ? "rgba(0,255,133,0.4)" : "var(--ns-border)"}`,
-                    background: sharedBy.includes(m) ? "rgba(0,255,133,0.1)" : "var(--ns-card2)",
+                    border: `1px solid ${sharedBy.includes(m) ? "color-mix(in srgb, var(--ns-g) 40%, transparent)" : "var(--ns-border)"}`,
+                    background: sharedBy.includes(m) ? "color-mix(in srgb, var(--ns-g) 10%, transparent)" : "var(--ns-card2)",
                     color: sharedBy.includes(m) ? "var(--ns-g)" : "var(--ns-text2)",
                     fontSize: 12,
                     fontWeight: 600,
@@ -421,8 +421,8 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
             style={{
               padding: "14px 18px",
               marginBottom: 14,
-              background: "rgba(0,255,133,0.06)",
-              border: "1px solid rgba(0,255,133,0.15)",
+              background: "color-mix(in srgb, var(--ns-g) 6%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--ns-g) 15%, transparent)",
               borderRadius: 16,
               display: "flex",
               justifyContent: "space-between",

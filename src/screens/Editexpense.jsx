@@ -131,8 +131,8 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
                 onClick={() => setCategory(c.id)}
                 style={{
                   padding: "7px 14px", borderRadius: 100,
-                  border: `1px solid ${category === c.id ? "rgba(0,255,133,0.4)" : "var(--ns-border)"}`,
-                  background: category === c.id ? "rgba(0,255,133,0.1)" : "var(--ns-card2)",
+                  border: `1px solid ${category === c.id ? "color-mix(in srgb, var(--ns-g) 40%, transparent)" : "var(--ns-border)"}`,
+                  background: category === c.id ? "color-mix(in srgb, var(--ns-g) 10%, transparent)" : "var(--ns-card2)",
                   color: category === c.id ? "var(--ns-g)" : "var(--ns-text2)",
                   fontSize: 12, fontWeight: 600, cursor: "pointer",
                   display: "flex", alignItems: "center", gap: 5,
@@ -155,8 +155,8 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
                 onClick={() => toggleMember(m)}
                 style={{
                   padding: "7px 14px", borderRadius: 100,
-                  border: `1px solid ${sharedBy.includes(m) ? "rgba(0,255,133,0.4)" : "var(--ns-border)"}`,
-                  background: sharedBy.includes(m) ? "rgba(0,255,133,0.1)" : "var(--ns-card2)",
+                  border: `1px solid ${sharedBy.includes(m) ? "color-mix(in srgb, var(--ns-g) 40%, transparent)" : "var(--ns-border)"}`,
+                  background: sharedBy.includes(m) ? "color-mix(in srgb, var(--ns-g) 10%, transparent)" : "var(--ns-card2)",
                   color: sharedBy.includes(m) ? "var(--ns-g)" : "var(--ns-text2)",
                   fontSize: 12, fontWeight: 600, cursor: "pointer",
                 }}
@@ -175,8 +175,8 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
       {perPerson && (
         <div style={{
           padding: "14px 18px", marginBottom: 14,
-          background: "rgba(0,255,133,0.06)",
-          border: "1px solid rgba(0,255,133,0.15)",
+          background: "color-mix(in srgb, var(--ns-g) 6%, transparent)",
+          border: "1px solid color-mix(in srgb, var(--ns-g) 15%, transparent)",
           borderRadius: 16, display: "flex",
           justifyContent: "space-between", alignItems: "center",
         }}>

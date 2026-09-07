@@ -69,7 +69,7 @@ function Pay({ setPage, pointsEarned = 0, tripBills = [], tripMembers = [] }) {
       {pointsEarned > 0 && (
         <div style={{
           padding: "12px 16px", marginBottom: 14,
-          background: "rgba(0,255,133,0.08)", border: "1px solid rgba(0,255,133,0.25)",
+          background: "color-mix(in srgb, var(--ns-g) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--ns-g) 25%, transparent)",
           borderRadius: 16, display: "flex", justifyContent: "space-between", alignItems: "center",
         }}>
           <span style={{ fontSize: 13, color: "var(--ns-muted)" }}>Points earned</span>
@@ -93,8 +93,8 @@ function Pay({ setPage, pointsEarned = 0, tripBills = [], tripMembers = [] }) {
                 onClick={() => setSelected(c.name)}
                 style={{
                   padding: "8px 14px", borderRadius: 100, cursor: "pointer",
-                  border: `1px solid ${displayMember === c.name ? "rgba(0,255,133,0.4)" : "var(--ns-border)"}`,
-                  background: displayMember === c.name ? "rgba(0,255,133,0.1)" : "var(--ns-card2)",
+                  border: `1px solid ${displayMember === c.name ? "color-mix(in srgb, var(--ns-g) 40%, transparent)" : "var(--ns-border)"}`,
+                  background: displayMember === c.name ? "color-mix(in srgb, var(--ns-g) 10%, transparent)" : "var(--ns-card2)",
                   color: displayMember === c.name ? "var(--ns-g)" : "var(--ns-text2)",
                   fontSize: 13, fontWeight: 600,
                 }}
@@ -121,7 +121,7 @@ function Pay({ setPage, pointsEarned = 0, tripBills = [], tripMembers = [] }) {
               style={{
                 width: 200, height: 200, objectFit: "contain",
                 borderRadius: 16, margin: "0 auto 12px",
-                border: "1px solid rgba(0,255,133,0.2)",
+                border: "1px solid color-mix(in srgb, var(--ns-g) 20%, transparent)",
                 display: "block",
               }}
             />
@@ -166,7 +166,7 @@ function Pay({ setPage, pointsEarned = 0, tripBills = [], tripMembers = [] }) {
             <button type="button" onClick={() => { setSlipImage(null); setUploaded(false); }}
               style={{
                 position: "absolute", top: 8, right: 8,
-                background: "rgba(255,59,92,0.85)", border: "none", borderRadius: "50%",
+                background: "color-mix(in srgb, var(--ns-r) 85%, transparent)", border: "none", borderRadius: "50%",
                 width: 28, height: 28, color: "#fff", fontSize: 14, cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center",
               }}>×</button>

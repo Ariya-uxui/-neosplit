@@ -1,7 +1,7 @@
 import React from "react";
 import "../App.css";
  
-function BillDetail({ setPage, selectedBill, markBillAsSettled, startEditExpense }) {
+function BillDetail({ setPage, selectedBill, startEditExpense }) {
  
   if (!selectedBill) {
     return (
@@ -112,24 +112,24 @@ function BillDetail({ setPage, selectedBill, markBillAsSettled, startEditExpense
         >
           ✏️ Edit Bill
         </button>
-        <button className="ns-btn ns-btn-dark" onClick={() => setPage("settlement")}>
-          View Settlement
-        </button>
-        {!isFinished && (
-          <button
-            className="ns-btn ns-btn-primary"
-            onClick={() => {
-              markBillAsSettled(selectedBill.id);
-              setPage("billhistory");
-            }}
-          >
-            ✅ Mark as Settled
+        {!isFinished ? (
+          <button className="ns-btn ns-btn-primary" onClick={() => setPage("settlement")}>
+            ⚖️ Settle in Trip Settlement →
+          </button>
+        ) : (
+          <button className="ns-btn ns-btn-dark" onClick={() => setPage("settlement")}>
+            View Settlement
           </button>
         )}
         <button className="ns-btn ns-btn-ghost" onClick={() => setPage("receipt")}>
           ← Back to Bills
         </button>
       </div>
+      {!isFinished && (
+        <div style={{ fontSize: 11, color: "var(--ns-muted)", textAlign: "center", marginTop: 10 }}>
+          Bills are settled together, not one at a time
+        </div>
+      )}
     </div>
   );
 }

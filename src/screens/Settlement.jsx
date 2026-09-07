@@ -77,7 +77,8 @@ function Settlement({
     }
  
     const totalAmount = billsForCalculation.reduce((s, b) => s + (Number(b.amount) || 0), 0);
-    return { balances, transfers, totalAmount };
+    const amountToTransfer = transfers.reduce((s, t) => s + t.amount, 0);
+    return { balances, transfers, totalAmount, amountToTransfer };
   }, [billsForCalculation, tripMembers]);
  
   const getCategoryIcon = (cat) =>
@@ -104,24 +105,33 @@ function Settlement({
  
       {/* ── Summary hero ── */}
       <div className="ns-card" style={{
-        background: "linear-gradient(135deg, rgba(0,255,133,0.1), rgba(0,255,133,0.03))",
-        border: "1px solid rgba(0,255,133,0.2)", marginBottom: 14,
+        background: "linear-gradient(135deg, color-mix(in srgb, var(--ns-g) 10%, transparent), color-mix(in srgb, var(--ns-g) 3%, transparent))",
+        border: "1px solid color-mix(in srgb, var(--ns-g) 20%, transparent)", marginBottom: 14,
       }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(0,255,133,0.7)", marginBottom: 6 }}>
-          {selectedBill ? "Bill Settlement" : "Trip Settlement"}
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "color-mix(in srgb, var(--ns-g) 70%, transparent)", marginBottom: 6 }}>
+          {selectedBill ? "Bill Settlement" : "Left to Settle"}
         </div>
         <div style={{ fontFamily: "var(--ns-syne)", fontSize: 34, fontWeight: 800, color: "var(--ns-g)", letterSpacing: "-1px", lineHeight: 1 }}>
-          {result.totalAmount.toLocaleString()}
+          {result.amountToTransfer.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           <span style={{ fontSize: 16, color: "var(--ns-muted)", marginLeft: 6 }}>THB</span>
         </div>
         <div style={{ fontSize: 12, color: "var(--ns-muted)", marginTop: 5 }}>
-          {billsForCalculation.length} pending bill{billsForCalculation.length !== 1 ? "s" : ""} included
+          {result.transfers.length} transfer{result.transfers.length !== 1 ? "s" : ""} remaining
         </div>
         {!isAllSettled && (
           <div style={{ marginTop: 8, fontSize: 12, color: "var(--ns-g)", fontWeight: 700 }}>
             🏅 Earn +{pointsToEarn} pts by settling all
           </div>
         )}
+        <div style={{
+          marginTop: 14, paddingTop: 12, borderTop: "1px solid color-mix(in srgb, var(--ns-g) 15%, transparent)",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+        }}>
+          <span style={{ fontSize: 12, color: "var(--ns-muted)" }}>Pending expenses (total value)</span>
+          <span style={{ fontFamily: "var(--ns-syne)", fontSize: 15, fontWeight: 700, color: "var(--ns-text)" }}>
+            {result.totalAmount.toLocaleString()} THB
+          </span>
+        </div>
       </div>
  
       {/* ── All settled state ── */}
@@ -186,8 +196,8 @@ function Settlement({
             const isPos = balance >= 0;
             return (
               <div key={name} className="ns-card"
-                style={{ display: "flex", alignItems: "center", gap: 14, animationDelay: `${index * 0.06}s`, animation: "cardUp 0.3s ease", borderColor: isPos ? "rgba(0,255,133,0.15)" : "rgba(255,59,92,0.15)" }}>
-                <div style={{ width: 42, height: 42, borderRadius: "50%", flexShrink: 0, background: isPos ? "rgba(0,255,133,0.15)" : "rgba(255,59,92,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--ns-syne)", fontSize: 18, fontWeight: 800, color: isPos ? "var(--ns-g)" : "var(--ns-r)", border: `1px solid ${isPos ? "rgba(0,255,133,0.25)" : "rgba(255,59,92,0.25)"}` }}>
+                style={{ display: "flex", alignItems: "center", gap: 14, animationDelay: `${index * 0.06}s`, animation: "cardUp 0.3s ease", borderColor: isPos ? "color-mix(in srgb, var(--ns-g) 15%, transparent)" : "color-mix(in srgb, var(--ns-r) 15%, transparent)" }}>
+                <div style={{ width: 42, height: 42, borderRadius: "50%", flexShrink: 0, background: isPos ? "color-mix(in srgb, var(--ns-g) 15%, transparent)" : "color-mix(in srgb, var(--ns-r) 15%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--ns-syne)", fontSize: 18, fontWeight: 800, color: isPos ? "var(--ns-g)" : "var(--ns-r)", border: `1px solid ${isPos ? "color-mix(in srgb, var(--ns-g) 25%, transparent)" : "color-mix(in srgb, var(--ns-r) 25%, transparent)"}` }}>
                   {name.charAt(0).toUpperCase()}
                 </div>
                 <div style={{ flex: 1 }}>

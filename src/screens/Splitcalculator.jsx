@@ -113,12 +113,12 @@ function SplitCalculator({ setPage, selectedBill }) {
  
       {/* ── Result hero ── */}
       <div style={{
-        background: "linear-gradient(135deg, rgba(0,255,133,0.1), rgba(0,255,133,0.03))",
-        border: "1px solid rgba(0,255,133,0.25)",
+        background: "linear-gradient(135deg, color-mix(in srgb, var(--ns-g) 10%, transparent), color-mix(in srgb, var(--ns-g) 3%, transparent))",
+        border: "1px solid color-mix(in srgb, var(--ns-g) 25%, transparent)",
         borderRadius: 24, padding: "28px 22px",
         textAlign: "center", marginBottom: 20,
       }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(0,255,133,0.7)", marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "color-mix(in srgb, var(--ns-g) 70%, transparent)", marginBottom: 8 }}>
           Each Person Pays
         </div>
         <div style={{ fontFamily: "var(--ns-syne)", fontSize: 52, fontWeight: 800, letterSpacing: "-2px", color: "var(--ns-g)", lineHeight: 1 }}>
@@ -130,7 +130,7 @@ function SplitCalculator({ setPage, selectedBill }) {
         {amount > 0 && people > 1 && (
           <div style={{
             marginTop: 16, paddingTop: 14,
-            borderTop: "1px solid rgba(0,255,133,0.15)",
+            borderTop: "1px solid color-mix(in srgb, var(--ns-g) 15%, transparent)",
             display: "flex", justifyContent: "center", gap: 24,
             fontSize: 12, color: "var(--ns-muted)",
           }}>

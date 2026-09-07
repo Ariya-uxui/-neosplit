@@ -23,7 +23,7 @@ function ThankYou({ setPage, userProfile, pointsEarned = 10 }) {
         width: 96, height: 96, borderRadius: "50%",
         border: "3px solid var(--ns-g)",
         overflow: "hidden", marginBottom: 16,
-        boxShadow: "0 0 24px rgba(0,255,133,0.3)",
+        boxShadow: "0 0 24px color-mix(in srgb, var(--ns-g) 30%, transparent)",
         opacity: show ? 1 : 0,
         transition: "opacity 0.5s ease 0.2s",
       }}>
@@ -45,15 +45,15 @@ function ThankYou({ setPage, userProfile, pointsEarned = 10 }) {
  
       {/* ── Points earned card ── */}
       <div style={{
-        background: "linear-gradient(135deg, rgba(0,255,133,0.12), rgba(0,255,133,0.04))",
-        border: "1px solid rgba(0,255,133,0.3)",
+        background: "linear-gradient(135deg, color-mix(in srgb, var(--ns-g) 12%, transparent), color-mix(in srgb, var(--ns-g) 4%, transparent))",
+        border: "1px solid color-mix(in srgb, var(--ns-g) 30%, transparent)",
         borderRadius: 24, padding: "24px 32px",
         textAlign: "center", marginBottom: 28,
         opacity: show ? 1 : 0,
         transform: show ? "translateY(0)" : "translateY(20px)",
         transition: "all 0.5s ease 0.4s",
       }}>
-        <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(0,255,133,0.7)", marginBottom: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "color-mix(in srgb, var(--ns-g) 70%, transparent)", marginBottom: 8 }}>
           Points Earned
         </div>
         <div style={{ fontFamily: "var(--ns-syne)", fontSize: 56, fontWeight: 800, color: "var(--ns-g)", lineHeight: 1, letterSpacing: "-2px" }}>

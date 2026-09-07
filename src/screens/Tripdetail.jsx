@@ -9,7 +9,7 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense, 
     ({ Food:"🍜", Hotel:"🏨", Transport:"🚕", Travel:"🚕", Ticket:"🎫", Merch:"🛍️" }[cat] || "💸");
  
   const getCategoryColor = (cat) =>
-    ({ Food:"#FF6B35", Ticket:"#00FF85", Transport:"#FFD400", Travel:"#FFD400", Merch:"#FF3B5C", Hotel:"#8B5CF6" }[cat] || "#6B7280");
+    ({ Food:"#FF6B35", Ticket:"var(--ns-g)", Transport:"#FFD400", Travel:"#FFD400", Merch:"#FF3B5C", Hotel:"#8B5CF6" }[cat] || "#6B7280");
  
   const catMap = {};
   tripBills.forEach((b) => {
@@ -52,9 +52,9 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense, 
           className="ns-btn"
           style={{
             width: "auto", padding: "10px 14px", fontSize: 12,
-            background: "rgba(255,59,92,0.08)",
+            background: "color-mix(in srgb, var(--ns-r) 8%, transparent)",
             color: "var(--ns-r)",
-            border: "1px solid rgba(255,59,92,0.2)",
+            border: "1px solid color-mix(in srgb, var(--ns-r) 20%, transparent)",
           }}
           onClick={() => {
             if (window.confirm("Delete this trip and all its expenses?")) {
@@ -69,11 +69,11 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense, 
 
       {/* ── Summary card ── */}
       <div className="ns-card" style={{
-        background: "linear-gradient(135deg, rgba(0,255,133,0.1), rgba(0,255,133,0.03))",
-        border: "1px solid rgba(0,255,133,0.2)",
+        background: "linear-gradient(135deg, color-mix(in srgb, var(--ns-g) 10%, transparent), color-mix(in srgb, var(--ns-g) 3%, transparent))",
+        border: "1px solid color-mix(in srgb, var(--ns-g) 20%, transparent)",
         marginBottom: 14,
       }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(0,255,133,0.7)", marginBottom: 6 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "color-mix(in srgb, var(--ns-g) 70%, transparent)", marginBottom: 6 }}>
           {currentTrip?.title || "Trip"}
         </div>
         <div style={{ fontFamily: "var(--ns-syne)", fontSize: 34, fontWeight: 800, color: "var(--ns-g)", letterSpacing: "-1px", lineHeight: 1 }}>
@@ -175,7 +175,7 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense, 
                   <button
                     type="button"
                     className="ns-btn"
-                    style={{ width: "auto", padding: "7px 14px", fontSize: 12, background: "rgba(255,59,92,0.1)", color: "var(--ns-r)", border: "1px solid rgba(255,59,92,0.2)" }}
+                    style={{ width: "auto", padding: "7px 14px", fontSize: 12, background: "color-mix(in srgb, var(--ns-r) 10%, transparent)", color: "var(--ns-r)", border: "1px solid color-mix(in srgb, var(--ns-r) 20%, transparent)" }}
                     onClick={() => deleteExpense(bill.id)}
                   >
                     Delete

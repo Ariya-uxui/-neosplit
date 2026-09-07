@@ -1,19 +1,19 @@
 import React, { useEffect, useRef, useState } from "react";
 import "../App.css";
- 
+
 const DEFAULT_PROFILE = {
   name: "NongTaeyoung",
   selectedBias: "Taeyong",
   profileImage: "https://i.pinimg.com/736x/0b/11/d4/0b11d44290e5c34a8ebf40c4d58bde8f.jpg",
   qrImage: null,
 };
- 
+
 const THEMES = [
-  { id: "neon",  label: "Neon",  hint: "Bright & bold",   bg: "#080807", card: "#131312", accent: "#00FF85" },
+  { id: "neon",  label: "Neon",  hint: "Bright & bold",   bg: "#080807", card: "#131312", accent: "var(--ns-g)" },
   { id: "light", label: "Light", hint: "Clean & minimal", bg: "#ffffff", card: "#f2f2f2", accent: "#059669" },
   { id: "dark",  label: "Dark",  hint: "Plain black & white", bg: "#000000", card: "#1c1c1c", accent: "#e5e5e5" },
 ];
- 
+
 const BIAS_LIST = [
   { id: 1,  name: "Taeyong",  emoji: "🌹", unit: "NCT 127" },
   { id: 2,  name: "Doyoung",  emoji: "🐰", unit: "NCT 127" },
@@ -35,7 +35,7 @@ const BIAS_LIST = [
   { id: 18, name: "Hendery",  emoji: "🌊", unit: "WayV" },
   { id: 19, name: "YangYang", emoji: "⚡", unit: "WayV" },
 ];
- 
+
 export default function Profile({ setPage, userProfile, setUserProfile, theme = "neon", setTheme }) {
   const [name,         setName]         = useState(userProfile?.name         || DEFAULT_PROFILE.name);
   const [selectedBias, setSelectedBias] = useState(userProfile?.selectedBias || DEFAULT_PROFILE.selectedBias);
@@ -43,10 +43,10 @@ export default function Profile({ setPage, userProfile, setUserProfile, theme = 
   const [qrImage,      setQrImage]      = useState(userProfile?.qrImage      || null);
   const [toast,        setToast]        = useState("");
   const [saved,        setSaved]        = useState(false);
- 
+
   const fileInputRef = useRef(null);
   const qrInputRef   = useRef(null);
- 
+
   useEffect(() => {
     if (userProfile) {
       setName(userProfile.name || DEFAULT_PROFILE.name);
@@ -55,13 +55,13 @@ export default function Profile({ setPage, userProfile, setUserProfile, theme = 
       setQrImage(userProfile.qrImage || null);
     }
   }, [userProfile]);
- 
+
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(""), 2000);
     return () => clearTimeout(t);
   }, [toast]);
- 
+
   const handleImageChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -76,7 +76,7 @@ export default function Profile({ setPage, userProfile, setUserProfile, theme = 
     };
     reader.readAsDataURL(file);
   };
- 
+
   const handleQrChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -91,7 +91,7 @@ export default function Profile({ setPage, userProfile, setUserProfile, theme = 
     };
     reader.readAsDataURL(file);
   };
- 
+
   const handleSave = () => {
     const data = { name: name.trim() || DEFAULT_PROFILE.name, selectedBias, profileImage, qrImage };
     setUserProfile(data);
@@ -100,15 +100,15 @@ export default function Profile({ setPage, userProfile, setUserProfile, theme = 
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
- 
+
   return (
     <div className="ns-screen">
- 
+
       {/* Header */}
       <div className="ns-page-header">
         <span className="ns-display">Profile</span>
       </div>
- 
+
       {/* Avatar */}
       <div style={{ textAlign: "center", marginBottom: 24 }}>
         <div
@@ -134,7 +134,7 @@ export default function Profile({ setPage, userProfile, setUserProfile, theme = 
         </button>
         <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleImageChange} />
       </div>
- 
+
       {/* Name */}
       <div className="ns-card" style={{ marginBottom: 14 }}>
         <div className="ns-input-group" style={{ marginBottom: 0 }}>
@@ -142,7 +142,7 @@ export default function Profile({ setPage, userProfile, setUserProfile, theme = 
           <input className="ns-input" value={name} onChange={(e) => { setName(e.target.value); setSaved(false); }} placeholder="Enter your name" />
         </div>
       </div>
- 
+
       {/* Appearance */}
       <div className="ns-section-label">Appearance</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 14 }}>
@@ -179,7 +179,7 @@ export default function Profile({ setPage, userProfile, setUserProfile, theme = 
           );
         })}
       </div>
- 
+
       {/* QR PromptPay */}
       <div className="ns-card" style={{ marginBottom: 14 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ns-text)", marginBottom: 4 }}>
@@ -188,7 +188,7 @@ export default function Profile({ setPage, userProfile, setUserProfile, theme = 
         <div style={{ fontSize: 12, color: "var(--ns-muted)", marginBottom: 12 }}>
           อัปโหลด QR จากแอปธนาคาร — เพื่อนจะ scan จ่ายเงินให้คุณได้เลย
         </div>
- 
+
         {qrImage ? (
           <div style={{ position: "relative", textAlign: "center" }}>
             <img
@@ -237,7 +237,7 @@ export default function Profile({ setPage, userProfile, setUserProfile, theme = 
         )}
         <input ref={qrInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleQrChange} />
       </div>
- 
+
       {/* Bias */}
       <div className="ns-card" style={{
         marginBottom: 14,
@@ -255,7 +255,7 @@ export default function Profile({ setPage, userProfile, setUserProfile, theme = 
         </div>
         <span className="ns-badge ns-badge-green">Selected</span>
       </div>
- 
+
       <div className="ns-section-label">Select Your Bias</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 20 }}>
         {BIAS_LIST.map((bias) => {
@@ -277,11 +277,11 @@ export default function Profile({ setPage, userProfile, setUserProfile, theme = 
           );
         })}
       </div>
- 
+
       <button className="ns-btn ns-btn-primary" onClick={handleSave} style={{ background: saved ? "var(--ns-g2)" : undefined }}>
         {saved ? "✓ Saved!" : "Save Profile"}
       </button>
- 
+
       {toast && (
         <div style={{
           position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)",

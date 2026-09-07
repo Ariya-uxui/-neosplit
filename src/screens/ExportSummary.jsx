@@ -64,8 +64,8 @@ function ExportSummary({ setPage, tripBills = [], tripMembers = [], userProfile 
  
       {/* ── Hero ── */}
       <div className="ns-card" style={{
-        background: "linear-gradient(135deg, rgba(0,255,133,0.1), rgba(0,255,133,0.03))",
-        border: "1px solid rgba(0,255,133,0.2)", marginBottom: 14, textAlign: "center",
+        background: "linear-gradient(135deg, color-mix(in srgb, var(--ns-g) 10%, transparent), color-mix(in srgb, var(--ns-g) 3%, transparent))",
+        border: "1px solid color-mix(in srgb, var(--ns-g) 20%, transparent)", marginBottom: 14, textAlign: "center",
       }}>
         <div style={{ fontSize: 36, marginBottom: 8 }}>🧾</div>
         <div style={{ fontFamily: "var(--ns-syne)", fontSize: 32, fontWeight: 800, color: "var(--ns-g)", letterSpacing: "-1px" }}>

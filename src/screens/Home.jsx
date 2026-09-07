@@ -84,14 +84,14 @@ function Home({ setPage, tripBills = [], tripMembers = [], userProfile, trips = 
               className="ns-card"
               style={{
                 marginBottom: 10, cursor: "pointer",
-                border: isActive ? "1px solid rgba(0,255,133,0.4)" : "1px solid var(--ns-border)",
-                background: isActive ? "rgba(0,255,133,0.06)" : "var(--ns-card)",
+                border: isActive ? "1px solid color-mix(in srgb, var(--ns-g) 40%, transparent)" : "1px solid var(--ns-border)",
+                background: isActive ? "color-mix(in srgb, var(--ns-g) 6%, transparent)" : "var(--ns-card)",
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 12 }} onClick={() => selectTrip(trip.id)}>
                 <div style={{
                   width: 42, height: 42, borderRadius: 12, flexShrink: 0,
-                  background: isActive ? "rgba(0,255,133,0.15)" : "rgba(255,255,255,0.06)",
+                  background: isActive ? "color-mix(in srgb, var(--ns-g) 15%, transparent)" : "rgba(255,255,255,0.06)",
                   display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
                 }}>
                   ✈️
@@ -107,7 +107,7 @@ function Home({ setPage, tripBills = [], tripMembers = [], userProfile, trips = 
                   </div>
                 </div>
                 {isActive && (
-                  <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 100, background: "rgba(0,255,133,0.15)", color: "var(--ns-g)", border: "1px solid rgba(0,255,133,0.3)" }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 100, background: "color-mix(in srgb, var(--ns-g) 15%, transparent)", color: "var(--ns-g)", border: "1px solid color-mix(in srgb, var(--ns-g) 30%, transparent)" }}>
                     Active
                   </span>
                 )}
@@ -129,9 +129,9 @@ function Home({ setPage, tripBills = [], tripMembers = [], userProfile, trips = 
                   className="ns-btn"
                   style={{
                     flex: 1, padding: "8px", fontSize: 12,
-                    background: "rgba(255,59,92,0.08)",
+                    background: "color-mix(in srgb, var(--ns-r) 8%, transparent)",
                     color: "var(--ns-r)",
-                    border: "1px solid rgba(255,59,92,0.2)",
+                    border: "1px solid color-mix(in srgb, var(--ns-r) 20%, transparent)",
                   }}
                   onClick={() => {
                     if (window.confirm(`Delete "${trip.title}"?`)) deleteTrip(trip.id);

@@ -19,16 +19,19 @@ function MyPoints({ setPage, userPoints = 0 }) {
  
       {/* ── Points hero ── */}
       <div className="ns-card" style={{
-        background: "linear-gradient(135deg, rgba(0,255,133,0.12), rgba(0,255,133,0.03))",
-        border: "1px solid rgba(0,255,133,0.3)",
+        background: "linear-gradient(135deg, color-mix(in srgb, var(--ns-g) 12%, transparent), color-mix(in srgb, var(--ns-g) 3%, transparent))",
+        border: "1px solid color-mix(in srgb, var(--ns-g) 30%, transparent)",
         textAlign: "center", padding: "28px 20px", marginBottom: 14,
       }}>
         <div style={{ fontSize: 48, marginBottom: 8 }}>{levelIcon}</div>
         <div style={{ fontFamily: "var(--ns-syne)", fontSize: 56, fontWeight: 800, color: "var(--ns-g)", letterSpacing: "-2px", lineHeight: 1 }}>
           {userPoints}
         </div>
-        <div style={{ fontSize: 14, color: "var(--ns-muted)", marginTop: 6 }}>Total Points</div>
-        <div style={{ marginTop: 12, display: "inline-block", padding: "4px 14px", borderRadius: 100, background: "rgba(0,255,133,0.15)", border: "1px solid rgba(0,255,133,0.3)", fontSize: 13, fontWeight: 700, color: "var(--ns-g)" }}>
+        <div style={{ fontSize: 14, color: "var(--ns-muted)", marginTop: 6 }}>Total Points (Lifetime)</div>
+        <div style={{ fontSize: 11, color: "var(--ns-muted)", marginTop: 2 }}>
+          Across all trips — this never goes down
+        </div>
+        <div style={{ marginTop: 12, display: "inline-block", padding: "4px 14px", borderRadius: 100, background: "color-mix(in srgb, var(--ns-g) 15%, transparent)", border: "1px solid color-mix(in srgb, var(--ns-g) 30%, transparent)", fontSize: 13, fontWeight: 700, color: "var(--ns-g)" }}>
           {level}
         </div>
       </div>
@@ -51,7 +54,7 @@ function MyPoints({ setPage, userPoints = 0 }) {
       <div className="ns-card">
         {[
           { icon: "🤝", text: "Settle all bills", pts: "+10 pts/bill" },
-          { icon: "➕", text: "Add a new bill", pts: "+5 pts" },
+          { icon: "➕", text: "Add a new bill", pts: "+2 pts" },
           { icon: "🎯", text: "Complete a trip", pts: "+50 pts" },
         ].map((item) => (
           <div key={item.text} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid var(--ns-border)" }}>
