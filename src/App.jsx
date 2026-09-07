@@ -92,6 +92,7 @@ const initialTripState = {
   tripMembers: [],
   tripRewards: [],
   tripRedeems: [],
+  tripMilestones: [],
 };
 
 function tripReducer(state, action) {
@@ -112,8 +113,10 @@ function tripReducer(state, action) {
       return { ...state, tripRewards: action.rewards };
     case "SET_TRIP_REDEEMS":
       return { ...state, tripRedeems: action.redeems };
+    case "SET_TRIP_MILESTONES":
+      return { ...state, tripMilestones: action.milestones };
     case "CLEAR_CURRENT_TRIP":
-      return { ...state, currentTripId: null, currentTrip: null, tripBills: [], tripMembers: [], tripRewards: [], tripRedeems: [] };
+      return { ...state, currentTripId: null, currentTrip: null, tripBills: [], tripMembers: [], tripRewards: [], tripRedeems: [], tripMilestones: [] };
     default:
       return state;
   }
@@ -124,7 +127,7 @@ function App() {
   const { page, toast, editingExpense, selectedBill, selectedRedeem, showLanding } = ui;
 
   const [trip, dispatchTrip] = useReducer(tripReducer, initialTripState);
-  const { trips, currentTripId, currentTrip, tripBills, tripMembers, tripRewards, tripRedeems } = trip;
+  const { trips, currentTripId, currentTrip, tripBills, tripMembers, tripRewards, tripRedeems, tripMilestones } = trip;
 
   const [userPoints, setUserPoints] = useState(0);
   const [tripPoints, setTripPoints] = useState(0);
@@ -226,7 +229,11 @@ function App() {
       const data = snap.val();
       dispatchTrip({ type: "SET_TRIP_REDEEMS", redeems: data ? Object.values(data) : [] });
     });
-    return () => { unsubTrip(); unsubBills(); unsubMembers(); unsubRewards(); unsubRedeems(); };
+    const unsubMilestones = onValue(ref(db, `trips/${currentTripId}/gangMilestones`), (snap) => {
+      const data = snap.val();
+      dispatchTrip({ type: "SET_TRIP_MILESTONES", milestones: data ? Object.values(data) : [] });
+    });
+    return () => { unsubTrip(); unsubBills(); unsubMembers(); unsubRewards(); unsubRedeems(); unsubMilestones(); };
   }, [authReady, currentTripId]);
 
   // ── Load points ──
@@ -335,6 +342,30 @@ function App() {
       setToast("Couldn't save reward");
     });
     setToast("Reward created 🎉");
+  };
+
+  // ── Gang Reward milestones (per-trip, creator-only) ──
+  // If a trip hasn't set any of its own, Leaderboard.jsx falls back to a
+  // sensible default set — no setup required before the feature works.
+  const addGangMilestone = ({ threshold, label, desc }) => {
+    if (!currentTripId) return;
+    const id = Date.now().toString();
+    const milestone = {
+      id, threshold: Number(threshold) || 0,
+      label: label || "🎉 Milestone", desc: desc || "",
+    };
+    set(ref(db, `trips/${currentTripId}/gangMilestones/${id}`), milestone).catch((err) => {
+      console.error("Failed to save milestone:", err);
+      setToast("Couldn't save milestone");
+    });
+    setToast("Milestone added 🏆");
+  };
+
+  const deleteGangMilestone = (id) => {
+    if (!currentTripId) return;
+    remove(ref(db, `trips/${currentTripId}/gangMilestones/${id}`)).catch((err) => {
+      console.error("Failed to delete milestone:", err);
+    });
   };
 
   // Any member can request — this just files a Pending request.
@@ -505,7 +536,7 @@ function App() {
       case "splitcalculator": return <SplitCalculator setPage={setPage} selectedBill={selectedBill} />;
       case "profile":         return <Profile setPage={setPage} userProfile={userProfile} setUserProfile={setUserProfile} theme={theme} setTheme={setTheme} />;
       case "trophy":
-      case "leaderboard":     return <Leaderboard setPage={setPage} authReady={authReady} currentTripId={currentTripId} currentTrip={currentTrip} userProfile={userProfile} tripMembers={tripMembers} />;
+      case "leaderboard":     return <Leaderboard setPage={setPage} authReady={authReady} currentTripId={currentTripId} currentTrip={currentTrip} userProfile={userProfile} tripMembers={tripMembers} tripMilestones={tripMilestones} addGangMilestone={addGangMilestone} deleteGangMilestone={deleteGangMilestone} />;
       case "mypoints":        return <MyPoints setPage={setPage} userPoints={userPoints} />;
       case "rewardslist":     return <Rewards setPage={setPage} userPoints={tripPoints} tripRewards={tripRewards} tripRedeems={tripRedeems} currentTrip={currentTrip} userProfile={userProfile} requestRedeem={requestRedeem} confirmRedeem={confirmRedeem} setSelectedRedeem={setSelectedRedeem} />;
       case "createreward":    return <CreateReward setPage={setPage} addReward={addReward} />;

@@ -3,17 +3,26 @@ import "../App.css";
 import { db } from "../firebase";
 import { ref, onValue, set } from "firebase/database";
 
-// Shared milestones the whole group works toward together — this is what
-// gives the leaderboard a reason to exist beyond just bragging rights.
-const GANG_REWARDS = [
-  { threshold: 100, label: "Movie Picker 🎬", desc: "Winner picks the next movie night" },
+// Fallback used only when a trip hasn't set its own milestones yet —
+// so the feature works immediately with zero setup required.
+const DEFAULT_GANG_REWARDS = [
+  { threshold: 100, label: "Restaurant Picker 🍔", desc: "Winner picks the next movie night" },
   { threshold: 250, label: "Dessert Round 🍰", desc: "Group treats everyone to dessert" },
   { threshold: 500, label: "Trip MVP Crown 👑", desc: "Ultimate bragging rights for the trip" },
 ];
 
-function Leaderboard({ setPage, authReady, currentTripId, currentTrip, userProfile, tripMembers = [] }) {
+function Leaderboard({
+  setPage, authReady, currentTripId, currentTrip, userProfile, tripMembers = [],
+  tripMilestones = [], addGangMilestone, deleteGangMilestone,
+}) {
   const currentUser = userProfile?.name || "NongTaeyoung";
   const [scores, setScores] = useState({});
+  const [showMilestoneForm, setShowMilestoneForm] = useState(false);
+  const [newThreshold, setNewThreshold] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+
+  const isCreator = !!currentTrip?.creator && currentTrip.creator === currentUser;
 
   // โหลดคะแนนของทริปนี้จาก Firebase — points are scoped per trip now,
   // so a different trip's leaderboard is a completely separate pool.
@@ -50,11 +59,23 @@ function Leaderboard({ setPage, authReady, currentTripId, currentTrip, userProfi
 
   const groupTotal = allUsers.reduce((sum, u) => sum + u.points, 0);
   const hasAnyPoints = allUsers.some((u) => u.points > 0);
-  const nextReward = GANG_REWARDS.find((r) => groupTotal < r.threshold);
-  const prevThreshold = GANG_REWARDS.filter((r) => r.threshold <= groupTotal).slice(-1)[0]?.threshold || 0;
+  const activeMilestones = tripMilestones.length > 0
+    ? [...tripMilestones].sort((a, b) => a.threshold - b.threshold)
+    : DEFAULT_GANG_REWARDS;
+  const nextReward = activeMilestones.find((r) => groupTotal < r.threshold);
+  const prevThreshold = activeMilestones.filter((r) => r.threshold <= groupTotal).slice(-1)[0]?.threshold || 0;
   const rewardProgress = nextReward
     ? Math.min(100, ((groupTotal - prevThreshold) / (nextReward.threshold - prevThreshold)) * 100)
     : 100;
+
+  const handleAddMilestone = () => {
+    if (!newThreshold || Number(newThreshold) <= 0 || !newLabel.trim()) return;
+    addGangMilestone({ threshold: newThreshold, label: newLabel.trim(), desc: newDesc.trim() });
+    setNewThreshold("");
+    setNewLabel("");
+    setNewDesc("");
+    setShowMilestoneForm(false);
+  };
 
   const medals = ["👑", "🥈", "🥉"];
 
@@ -139,6 +160,55 @@ function Leaderboard({ setPage, authReady, currentTripId, currentTrip, userProfi
           </div>
         )}
       </div>
+
+      {/* Creator-only: manage milestones */}
+      {isCreator && (
+        <div style={{ marginBottom: 16 }}>
+          {tripMilestones.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+              {activeMilestones.map((m) => (
+                <div key={m.id} className="ns-card" style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px" }}>
+                  <div style={{ flex: 1, fontSize: 12, color: "var(--ns-text2)" }}>
+                    {m.threshold} pts — {m.label}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => deleteGangMilestone && deleteGangMilestone(m.id)}
+                    style={{ background: "none", border: "none", color: "var(--ns-r)", cursor: "pointer", fontSize: 13, padding: 0 }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {showMilestoneForm ? (
+            <div className="ns-card">
+              <div className="ns-input-group">
+                <label className="ns-input-label">Points Threshold</label>
+                <input className="ns-input" type="number" value={newThreshold} onChange={(e) => setNewThreshold(e.target.value)} placeholder="100" />
+              </div>
+              <div className="ns-input-group">
+                <label className="ns-input-label">Label</label>
+                <input className="ns-input" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="e.g. Movie Picker 🎬" />
+              </div>
+              <div className="ns-input-group" style={{ marginBottom: 0 }}>
+                <label className="ns-input-label">Description (optional)</label>
+                <input className="ns-input" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="e.g. Winner picks the movie" />
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button className="ns-btn ns-btn-primary" style={{ flex: 1 }} onClick={handleAddMilestone}>Add</button>
+                <button className="ns-btn ns-btn-ghost" style={{ flex: 1 }} onClick={() => setShowMilestoneForm(false)}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <button className="ns-btn ns-btn-dark" onClick={() => setShowMilestoneForm(true)}>
+              + Edit Milestones
+            </button>
+          )}
+        </div>
+      )}
 
       {hasAnyPoints ? (
         <>
