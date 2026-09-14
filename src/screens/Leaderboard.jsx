@@ -126,17 +126,6 @@ function Leaderboard({
         </div>
       </div>
 
-      {/* ── TEMP DEBUG — remove after diagnosing ── */}
-      <div style={{
-        fontSize: 10, color: "#fff", background: "#c00",
-        padding: "8px 10px", borderRadius: 8, marginBottom: 12,
-        fontFamily: "monospace", wordBreak: "break-all",
-      }}>
-        RAW currentTrip = {JSON.stringify(currentTrip)}
-        <br />
-        typeof currentTrip.creator = {typeof currentTrip?.creator}
-      </div>
-
       {/* Gang Reward progress — the reason the leaderboard matters */}
       <div className="ns-card" style={{
         background: "linear-gradient(135deg, color-mix(in srgb, var(--ns-g) 10%, transparent), color-mix(in srgb, var(--ns-g) 3%, transparent))",
