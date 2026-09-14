@@ -126,6 +126,17 @@ function Leaderboard({
         </div>
       </div>
 
+      {/* ── TEMP DEBUG — remove after diagnosing ── */}
+      <div style={{
+        fontSize: 11, color: "#fff", background: "#c00",
+        padding: "8px 10px", borderRadius: 8, marginBottom: 12,
+        fontFamily: "monospace", wordBreak: "break-all",
+      }}>
+        DEBUG · isCreator={String(isCreator)} · trip.creator=
+        "{currentTrip?.creator === undefined ? "undefined" : currentTrip?.creator}"
+        · currentUser="{currentUser}" · hasCurrentTrip={String(!!currentTrip)}
+      </div>
+
       {/* Gang Reward progress — the reason the leaderboard matters */}
       <div className="ns-card" style={{
         background: "linear-gradient(135deg, color-mix(in srgb, var(--ns-g) 10%, transparent), color-mix(in srgb, var(--ns-g) 3%, transparent))",
