@@ -128,15 +128,13 @@ function Leaderboard({
 
       {/* ── TEMP DEBUG — remove after diagnosing ── */}
       <div style={{
-        fontSize: 11, color: "#fff", background: "#c00",
+        fontSize: 10, color: "#fff", background: "#c00",
         padding: "8px 10px", borderRadius: 8, marginBottom: 12,
         fontFamily: "monospace", wordBreak: "break-all",
       }}>
-        DEBUG2 · currentTripId="{String(currentTripId)}" · isCreator={String(isCreator)}
-        · trip.creator="{currentTrip?.creator === undefined ? "undefined" : currentTrip?.creator}"
-        · currentUser="{currentUser}"
-        · trip.keys=[{currentTrip ? Object.keys(currentTrip).join(",") : "none"}]
-        · trip.id="{currentTrip?.id === undefined ? "undefined" : currentTrip?.id}"
+        RAW currentTrip = {JSON.stringify(currentTrip)}
+        <br />
+        typeof currentTrip.creator = {typeof currentTrip?.creator}
       </div>
 
       {/* Gang Reward progress — the reason the leaderboard matters */}
