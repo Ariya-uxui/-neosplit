@@ -47,10 +47,6 @@ const normalizeBill = (bill) => {
 };
 
 // ── UI reducer ──
-// Groups the screens-and-modals state that used to be five separate
-// useState calls (page, toast, editingExpense, selectedBill, showLanding).
-// These all change together as the user navigates, so one reducer keeps
-// each transition atomic and easy to follow in one place.
 const initialUiState = {
   page: "splash",
   toast: "",
@@ -80,10 +76,6 @@ function uiReducer(state, action) {
 }
 
 // ── Trip reducer ──
-// Groups everything loaded from/about the active trip (trips list,
-// currentTripId, currentTrip, tripBills, tripMembers) — previously five
-// separate useState calls that always changed in step with each other
-// (e.g. deleting the active trip has to reset four of them at once).
 const initialTripState = {
   trips: [],
   currentTripId: null,
@@ -147,8 +139,6 @@ function App() {
     } catch {}
   };
 
-  // ── Thin wrappers so every screen keeps calling setPage/setToast/etc.
-  // exactly as before — only the storage underneath changed. ──
   const setPage = (p) => dispatchUi({ type: "NAVIGATE", page: p });
   const setToast = (message) => dispatchUi({ type: "SET_TOAST", message });
   const setSelectedBill = (bill) => dispatchUi({ type: "SET_SELECTED_BILL", bill });
@@ -181,8 +171,6 @@ function App() {
   }, []);
 
   // ── Sign in anonymously so Firebase rules can require auth ──
-  // This is invisible to the user — no login screen, just a background
-  // device identity so the database can reject requests with no auth token.
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -207,6 +195,10 @@ function App() {
   }, [authReady]);
 
   // ── Load current trip data when tripId changes ──
+  // NOTE: this listener (unsubTrip) reads the trip's own node directly —
+  // this is what carries fields like `creator`, `title`, `date`. It was
+  // previously missing from this effect, which is why currentTrip.creator
+  // was always undefined even though the field existed in Firebase.
   useEffect(() => {
     if (!authReady || !currentTripId) return;
     const unsubTrip = onValue(ref(db, `trips/${currentTripId}`), (snap) => {
@@ -237,8 +229,6 @@ function App() {
   }, [authReady, currentTripId]);
 
   // ── Load points ──
-  // "userPoints" is GLOBAL lifetime XP — drives the Level shown in My
-  // Points, and only ever goes up (redeeming a reward never lowers it).
   useEffect(() => {
     if (!authReady) return;
     const unsub = onValue(ref(db, "userPoints"), (snap) => {
@@ -247,8 +237,6 @@ function App() {
     return () => unsub();
   }, [authReady]);
 
-  // "tripPoints" is scoped to the ACTIVE trip — this is the currency the
-  // Leaderboard ranks by and Rewards spends. Separate pool per trip.
   useEffect(() => {
     if (!authReady || !currentTripId || !userProfile?.name) {
       setTripPoints(0);
@@ -271,10 +259,6 @@ function App() {
   }, [toast]);
 
   // ── Points ──
-  // Every point-earning action credits BOTH pools: global XP (permanent,
-  // for Level) and this trip's shared point pool (spendable, for that
-  // trip's Leaderboard/Rewards). The trip-scoped write uses a transaction
-  // since multiple members can earn points around the same time.
   const addPoints = (pts) => {
     setUserPoints((prev) => {
       const updated = prev + pts;
@@ -295,12 +279,11 @@ function App() {
       return;
     }
     const id = Date.now().toString();
-    const trip = { id, ...newTrip };
-    set(ref(db, `trips/${id}`), trip).catch((err) => {
+    const tripObj = { id, ...newTrip };
+    set(ref(db, `trips/${id}`), tripObj).catch((err) => {
       console.error("Failed to save trip:", err);
       setToast("Couldn't save trip — check your connection");
     });
-    // save members under trip
     if (newTrip.memberList?.length > 0) {
       const membersObj = {};
       newTrip.memberList.forEach((m, i) => { membersObj[i] = m; });
@@ -345,8 +328,6 @@ function App() {
   };
 
   // ── Gang Reward milestones (per-trip, creator-only) ──
-  // If a trip hasn't set any of its own, Leaderboard.jsx falls back to a
-  // sensible default set — no setup required before the feature works.
   const addGangMilestone = ({ threshold, label, desc }) => {
     if (!currentTripId) return;
     const id = Date.now().toString();
@@ -368,8 +349,6 @@ function App() {
     });
   };
 
-  // Any member can request — this just files a Pending request.
-  // Points are NOT deducted until the trip creator confirms it below.
   const requestRedeem = (reward) => {
     if (!currentTripId || !userProfile?.name) return;
     const id = Date.now().toString();
@@ -390,9 +369,6 @@ function App() {
     setToast("Redeem requested — waiting for confirmation ⏳");
   };
 
-  // Creator-only: deducts points from the trip's shared pool and marks
-  // the request Confirmed. This never touches global XP — redeeming a
-  // reward spends the trip's points, it doesn't lower anyone's Level.
   const confirmRedeem = (redeemId) => {
     if (!currentTripId) return;
     const request = tripRedeems.find((r) => r.id === redeemId);
@@ -484,8 +460,6 @@ function App() {
     newMembers.forEach((m, i) => { membersObj[i] = m; });
     set(ref(db, `trips/${currentTripId}/members`), membersObj);
 
-    // Cascade the rename into existing bills so past bills don't keep
-    // pointing at a name that no longer exists in the trip.
     tripBills.forEach((bill) => {
       let changed = false;
       const updated = { ...bill };
