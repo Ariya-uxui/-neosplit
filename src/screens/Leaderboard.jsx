@@ -132,9 +132,11 @@ function Leaderboard({
         padding: "8px 10px", borderRadius: 8, marginBottom: 12,
         fontFamily: "monospace", wordBreak: "break-all",
       }}>
-        DEBUG · isCreator={String(isCreator)} · trip.creator=
-        "{currentTrip?.creator === undefined ? "undefined" : currentTrip?.creator}"
-        · currentUser="{currentUser}" · hasCurrentTrip={String(!!currentTrip)}
+        DEBUG2 · currentTripId="{String(currentTripId)}" · isCreator={String(isCreator)}
+        · trip.creator="{currentTrip?.creator === undefined ? "undefined" : currentTrip?.creator}"
+        · currentUser="{currentUser}"
+        · trip.keys=[{currentTrip ? Object.keys(currentTrip).join(",") : "none"}]
+        · trip.id="{currentTrip?.id === undefined ? "undefined" : currentTrip?.id}"
       </div>
 
       {/* Gang Reward progress — the reason the leaderboard matters */}
