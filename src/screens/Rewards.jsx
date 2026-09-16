@@ -17,6 +17,7 @@ function Rewards({
 
   const currentUserName = userProfile?.name;
   const isCreator = !!currentTrip?.creator && currentTrip.creator === currentUserName;
+  const tripPointsLabel = currentTrip?.title ? `${currentTrip.title} Points` : "Trip Points";
 
   const selected = tripRewards.find((r) => r.id === selectedReward);
   const canAfford = selected ? userPoints >= selected.points : false;
@@ -62,9 +63,10 @@ function Rewards({
         <div style={{
           padding: "6px 12px", borderRadius: 100,
           background: "color-mix(in srgb, var(--ns-g) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--ns-g) 20%, transparent)",
-          fontSize: 13, fontWeight: 700, color: "var(--ns-g)",
+          fontSize: 12, fontWeight: 700, color: "var(--ns-g)", textAlign: "right",
         }}>
-          {userPoints} pts <span style={{ opacity: 0.6, fontWeight: 600 }}>(this trip)</span>
+          {tripPointsLabel}<br />
+          <span style={{ fontSize: 15 }}>{userPoints} pts</span>
         </div>
       </div>
 
@@ -96,7 +98,11 @@ function Rewards({
       )}
 
       {/* ── Rewards list ── */}
-      <div className="ns-section-label">Gang Rewards</div>
+      <div className="ns-section-label" style={{ marginBottom: 2 }}>Gang Rewards</div>
+      <div style={{ fontSize: 12, color: "var(--ns-muted)", marginBottom: 12 }}>
+        Rewards created by your gang 🎁
+      </div>
+
       {tripRewards.length === 0 ? (
         <div className="ns-card" style={{ textAlign: "center", padding: 28, color: "var(--ns-muted)", marginBottom: 14 }}>
           <div style={{ fontSize: 32, marginBottom: 8 }}>🎁</div>
@@ -125,25 +131,14 @@ function Rewards({
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "var(--ns-text)", marginBottom: 3 }}>{reward.name}</div>
                 {reward.description && (
-                  <div style={{ fontSize: 11, color: "var(--ns-muted)", marginBottom: 3 }}>{reward.description}</div>
+                  <div style={{ fontSize: 11, color: "var(--ns-muted)", marginBottom: 4 }}>{reward.description}</div>
                 )}
-                {affordable ? (
-                  <div style={{ fontSize: 12, color: "var(--ns-g)", fontWeight: 700 }}>
-                    {reward.points} pts
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ fontSize: 12, color: "var(--ns-muted)", marginBottom: 4 }}>
-                      {userPoints} / {reward.points} pts
-                    </div>
-                    <div style={{ height: 5, background: "rgba(255,255,255,0.06)", borderRadius: 100, overflow: "hidden", marginBottom: 4 }}>
-                      <div style={{ height: "100%", borderRadius: 100, background: "var(--ns-g)", width: `${Math.min(100, (userPoints / reward.points) * 100)}%` }} />
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--ns-g)" }}>
-                      {reward.points - userPoints} pts to unlock
-                    </div>
-                  </>
-                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ns-text2)" }}>{reward.points} pts</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: affordable ? "var(--ns-g)" : "var(--ns-muted)" }}>
+                    {affordable ? "✓ Available to redeem" : `You need ${reward.points - userPoints} more pts`}
+                  </span>
+                </div>
               </div>
               {isSelected && <span style={{ color: "var(--ns-g)", fontSize: 18, fontWeight: 800 }}>✓</span>}
             </div>
@@ -164,23 +159,13 @@ function Rewards({
         </div>
       )}
 
-      {/* ── Confirm ── */}
-      {selected && (
-        <div style={{ padding: "12px 16px", background: "color-mix(in srgb, var(--ns-g) 6%, transparent)", border: "1px solid color-mix(in srgb, var(--ns-g) 20%, transparent)", borderRadius: 14, marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 13, color: "var(--ns-muted)" }}>Selected: {selected.name}</span>
-          <span style={{ fontSize: 13, fontWeight: 700, color: canAfford ? "var(--ns-g)" : "var(--ns-r)" }}>
-            -{selected.points} pts
-          </span>
-        </div>
-      )}
-
       <button
         className="ns-btn ns-btn-primary"
         disabled={!selectedReward || !canAfford}
         onClick={handleRedeem}
         style={{ opacity: (!selectedReward || !canAfford) ? 0.5 : 1 }}
       >
-        Request Redeem 🎁
+        {selected ? `🎁 Request Redeem — ${selected.points} pts` : "🎁 Select a reward above"}
       </button>
 
       {/* ── My own requests ── */}
@@ -206,7 +191,7 @@ function Rewards({
                   <div style={{ fontSize: 11, color: "var(--ns-muted)" }}>{req.points} pts</div>
                 </div>
                 <span className={`ns-badge ${isConfirmed ? "ns-badge-green" : "ns-badge-yellow"}`}>
-                  {isConfirmed ? "✅ Confirmed" : "⏳ Pending"}
+                  {isConfirmed ? "✅ Confirmed" : "⏳ Pending approval"}
                 </span>
               </div>
             );

@@ -9,7 +9,7 @@ const DEFAULT_PROFILE = {
 };
 
 const THEMES = [
-  { id: "neon",  label: "Neon",  hint: "Bright & bold",   bg: "#080807", card: "#131312", accent: "var(--ns-g)" },
+  { id: "neon",  label: "Neon",  hint: "Bright & bold",   bg: "#080807", card: "#131312", accent: "#00FF85" },
   { id: "light", label: "Light", hint: "Clean & minimal", bg: "#ffffff", card: "#f2f2f2", accent: "#059669" },
   { id: "dark",  label: "Dark",  hint: "Plain black & white", bg: "#000000", card: "#1c1c1c", accent: "#e5e5e5" },
 ];
@@ -43,6 +43,7 @@ export default function Profile({ setPage, userProfile, setUserProfile, theme = 
   const [qrImage,      setQrImage]      = useState(userProfile?.qrImage      || null);
   const [toast,        setToast]        = useState("");
   const [saved,        setSaved]        = useState(false);
+  const [showQrModal,  setShowQrModal]  = useState(false);
 
   const fileInputRef = useRef(null);
   const qrInputRef   = useRef(null);
@@ -90,6 +91,14 @@ export default function Profile({ setPage, userProfile, setUserProfile, theme = 
       setToast("QR updated ✓");
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleRemoveQr = () => {
+    setQrImage(null);
+    setShowQrModal(false);
+    const data = { name, selectedBias, profileImage, qrImage: null };
+    setUserProfile(data);
+    localStorage.setItem("neosplitProfile", JSON.stringify(data));
   };
 
   const handleSave = () => {
@@ -180,63 +189,109 @@ export default function Profile({ setPage, userProfile, setUserProfile, theme = 
         })}
       </div>
 
-      {/* QR PromptPay */}
+      {/* ── QR PromptPay — compact status card, no more always-on full QR ── */}
       <div className="ns-card" style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ns-text)", marginBottom: 4 }}>
-          QR PromptPay ของคุณ
+        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ns-text)", marginBottom: 4 }}>
+          PromptPay
         </div>
-        <div style={{ fontSize: 12, color: "var(--ns-muted)", marginBottom: 12 }}>
-          อัปโหลด QR จากแอปธนาคาร — เพื่อนจะ scan จ่ายเงินให้คุณได้เลย
+        <div style={{ fontSize: 12, color: "var(--ns-muted)", marginBottom: 14 }}>
+          Receive settlements directly to your QR.
         </div>
 
-        {qrImage ? (
-          <div style={{ position: "relative", textAlign: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 18 }}>{qrImage ? "✅" : "⚪"}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: qrImage ? "var(--ns-g)" : "var(--ns-muted)" }}>
+              {qrImage ? "QR connected" : "Not connected"}
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {qrImage ? (
+              <>
+                <button
+                  type="button"
+                  className="ns-btn ns-btn-ghost"
+                  style={{ width: "auto", padding: "7px 14px", fontSize: 12 }}
+                  onClick={() => setShowQrModal(true)}
+                >
+                  View QR
+                </button>
+                <button
+                  type="button"
+                  className="ns-btn ns-btn-ghost"
+                  style={{ width: "auto", padding: "7px 14px", fontSize: 12 }}
+                  onClick={() => qrInputRef.current?.click()}
+                >
+                  Change
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="ns-btn ns-btn-primary"
+                style={{ width: "auto", padding: "7px 16px", fontSize: 12 }}
+                onClick={() => qrInputRef.current?.click()}
+              >
+                + Add QR
+              </button>
+            )}
+          </div>
+        </div>
+
+        <input ref={qrInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleQrChange} />
+      </div>
+
+      {/* ── QR viewer modal ── */}
+      {showQrModal && qrImage && (
+        <div
+          onClick={() => setShowQrModal(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 100,
+            background: "rgba(0,0,0,0.7)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: 24,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="ns-card"
+            style={{ maxWidth: 320, width: "100%", textAlign: "center" }}
+          >
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+              <button
+                type="button"
+                onClick={() => setShowQrModal(false)}
+                style={{ background: "none", border: "none", color: "var(--ns-muted)", fontSize: 20, cursor: "pointer", lineHeight: 1 }}
+              >
+                ×
+              </button>
+            </div>
             <img
               src={qrImage}
               alt="QR PromptPay"
-              style={{ width: 180, height: 180, objectFit: "contain", borderRadius: 12, border: "1px solid color-mix(in srgb, var(--ns-g) 20%, transparent)" }}
+              style={{ width: "100%", maxWidth: 240, borderRadius: 12, border: "1px solid color-mix(in srgb, var(--ns-g) 20%, transparent)", margin: "0 auto 16px" }}
             />
-            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <div style={{ display: "flex", gap: 8 }}>
               <button
                 type="button"
                 className="ns-btn ns-btn-dark"
                 style={{ flex: 1, padding: "8px", fontSize: 12 }}
-                onClick={() => qrInputRef.current?.click()}
+                onClick={() => { setShowQrModal(false); qrInputRef.current?.click(); }}
               >
-                🔄 เปลี่ยน QR
+                🔄 Change
               </button>
               <button
                 type="button"
                 className="ns-btn"
                 style={{ flex: 1, padding: "8px", fontSize: 12, background: "color-mix(in srgb, var(--ns-r) 8%, transparent)", color: "var(--ns-r)", border: "1px solid color-mix(in srgb, var(--ns-r) 20%, transparent)" }}
-                onClick={() => {
-                  setQrImage(null);
-                  const data = { name, selectedBias, profileImage, qrImage: null };
-                  setUserProfile(data);
-                  localStorage.setItem("neosplitProfile", JSON.stringify(data));
-                }}
+                onClick={handleRemoveQr}
               >
-                🗑 ลบ QR
+                🗑 Remove
               </button>
             </div>
           </div>
-        ) : (
-          <label style={{
-            display: "flex", flexDirection: "column", alignItems: "center",
-            gap: 8, padding: "24px 16px", borderRadius: 12,
-            border: "1px dashed color-mix(in srgb, var(--ns-g) 30%, transparent)",
-            background: "color-mix(in srgb, var(--ns-g) 3%, transparent)", cursor: "pointer",
-          }}>
-            <span style={{ fontSize: 36 }}>📱</span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ns-g)" }}>อัปโหลด QR PromptPay</span>
-            <span style={{ fontSize: 11, color: "var(--ns-muted)", textAlign: "center" }}>
-              screenshot QR จากแอปธนาคารของคุณ
-            </span>
-            <input ref={qrInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleQrChange} />
-          </label>
-        )}
-        <input ref={qrInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleQrChange} />
-      </div>
+        </div>
+      )}
 
       {/* Bias */}
       <div className="ns-card" style={{

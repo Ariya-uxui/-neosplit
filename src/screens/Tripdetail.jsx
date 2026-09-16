@@ -1,22 +1,23 @@
 import React from "react";
 import "../App.css";
 import ExpenseChart from "../components/ExpenseChart";
- 
+
 function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense, deleteTrip, currentTrip, currentTripId, getInviteLink }) {
   const total = tripBills.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
- 
+  const hasExpenses = tripBills.length > 0;
+
   const getCategoryIcon = (cat) =>
     ({ Food:"🍜", Hotel:"🏨", Transport:"🚕", Travel:"🚕", Ticket:"🎫", Merch:"🛍️" }[cat] || "💸");
- 
+
   const getCategoryColor = (cat) =>
     ({ Food:"#FF6B35", Ticket:"var(--ns-g)", Transport:"#FFD400", Travel:"#FFD400", Merch:"#FF3B5C", Hotel:"#8B5CF6" }[cat] || "#6B7280");
- 
+
   const catMap = {};
   tripBills.forEach((b) => {
     catMap[b.category] = (catMap[b.category] || 0) + (Number(b.amount) || 0);
   });
   const cats = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
- 
+
   return (
     <div className="ns-screen">
 
@@ -84,7 +85,7 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense, 
           {tripBills.length} expenses · {tripBills.filter(b => b.status !== "Finished").length} pending
         </div>
       </div>
- 
+
       {/* ── Category breakdown ── */}
       {cats.length > 0 && (
         <div className="ns-card" style={{ marginBottom: 14 }}>
@@ -106,29 +107,32 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense, 
           </div>
         </div>
       )}
- 
+
       {/* ── ExpenseChart ── */}
       {tripBills.length > 0 && (
         <div style={{ marginBottom: 14 }}>
           <ExpenseChart tripBills={tripBills} />
         </div>
       )}
- 
+
       {/* ── Bills list ── */}
       <div className="ns-section-label">All Expenses</div>
- 
+
       {tripBills.length === 0 ? (
-        <div className="ns-card" style={{ textAlign: "center", padding: 32, color: "var(--ns-muted)" }}>
+        <div className="ns-card" style={{ textAlign: "center", padding: 32, color: "var(--ns-muted)", marginBottom: 14 }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>📋</div>
           <div style={{ fontWeight: 700, color: "var(--ns-text)", marginBottom: 4 }}>No expenses yet</div>
-          <div style={{ fontSize: 13 }}>Add your first bill from Bills page</div>
+          <div style={{ fontSize: 13, marginBottom: 16 }}>Add your first expense to start splitting.</div>
+          <button className="ns-btn ns-btn-primary" style={{ width: "auto", padding: "10px 20px", fontSize: 13 }} onClick={() => setPage("addexpense")}>
+            + Add expense
+          </button>
         </div>
       ) : (
         tripBills.map((bill, index) => {
           const people = bill.sharedBy?.length || bill.pax || 1;
           const each = people > 0 ? (Number(bill.amount || 0) / people).toFixed(2) : "0.00";
           const isFinished = bill.status === "Finished";
- 
+
           return (
             <div
               key={bill.id || `${bill.name}-${index}`}
@@ -154,11 +158,11 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense, 
                   <div style={{ fontSize: 10, color: "var(--ns-muted)" }}>THB</div>
                 </div>
               </div>
- 
+
               <div style={{ fontSize: 12, color: "var(--ns-muted)", marginBottom: 6 }}>
                 Paid by {bill.paidBy} · {people} pax · {each} THB/person
               </div>
- 
+
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span className={`ns-badge ${isFinished ? "ns-badge-green" : "ns-badge-yellow"}`}>
                   {isFinished ? "✅ Settled" : "⏳ Pending"}
@@ -186,13 +190,15 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense, 
           );
         })
       )}
- 
-      {/* ── Go to Settlement ── */}
-      <button className="ns-btn ns-btn-primary" style={{ marginTop: 8 }} onClick={() => setPage("settlement")}>
-        Go to Settlement →
-      </button>
+
+      {/* ── Go to Settlement — hidden when there's nothing to settle ── */}
+      {hasExpenses && (
+        <button className="ns-btn ns-btn-primary" style={{ marginTop: 8 }} onClick={() => setPage("settlement")}>
+          Go to Settlement →
+        </button>
+      )}
     </div>
   );
 }
- 
+
 export default TripDetail;

@@ -195,10 +195,6 @@ function App() {
   }, [authReady]);
 
   // ── Load current trip data when tripId changes ──
-  // NOTE: this listener (unsubTrip) reads the trip's own node directly —
-  // this is what carries fields like `creator`, `title`, `date`. It was
-  // previously missing from this effect, which is why currentTrip.creator
-  // was always undefined even though the field existed in Firebase.
   useEffect(() => {
     if (!authReady || !currentTripId) return;
     const unsubTrip = onValue(ref(db, `trips/${currentTripId}`), (snap) => {
@@ -237,6 +233,10 @@ function App() {
     return () => unsub();
   }, [authReady]);
 
+  // "tripPoints" = Available Points for THIS trip — spendable, decreases
+  // when a reward redemption is confirmed. Separate from lifetime points,
+  // which live at memberLifetimePoints and only ever go up (read directly
+  // by Leaderboard.jsx for ranking + Gang Reward milestone progress).
   useEffect(() => {
     if (!authReady || !currentTripId || !userProfile?.name) {
       setTripPoints(0);
@@ -259,6 +259,16 @@ function App() {
   }, [toast]);
 
   // ── Points ──
+  // Every point-earning action credits THREE pools now:
+  //  1. Global XP (userPoints) — lifetime across all trips, drives Level.
+  //  2. Trip Lifetime Points (memberLifetimePoints) — lifetime within
+  //     THIS trip, never decreases. Drives Leaderboard rank and the Gang
+  //     Reward milestone progress.
+  //  3. Trip Available Points (memberPoints) — spendable within this
+  //     trip, decreases when a reward redemption is confirmed.
+  // (1) and (2) are permanent records of what was earned; only (3) is a
+  // spendable balance. This is what keeps "I redeemed a reward" from
+  // ever knocking someone down the leaderboard.
   const addPoints = (pts) => {
     setUserPoints((prev) => {
       const updated = prev + pts;
@@ -267,6 +277,9 @@ function App() {
     });
     if (currentTripId && userProfile?.name) {
       runTransaction(ref(db, `trips/${currentTripId}/memberPoints/${userProfile.name}`), (current) => {
+        return (current || 0) + pts;
+      });
+      runTransaction(ref(db, `trips/${currentTripId}/memberLifetimePoints/${userProfile.name}`), (current) => {
         return (current || 0) + pts;
       });
     }
@@ -369,6 +382,8 @@ function App() {
     setToast("Redeem requested — waiting for confirmation ⏳");
   };
 
+  // Creator-only: deducts points from the trip's AVAILABLE pool only —
+  // memberLifetimePoints (rank/milestones) is never touched here.
   const confirmRedeem = (redeemId) => {
     if (!currentTripId) return;
     const request = tripRedeems.find((r) => r.id === redeemId);

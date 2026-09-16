@@ -1,7 +1,8 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import "../App.css";
 
 function Home({ setPage, tripBills = [], tripMembers = [], userProfile, trips = [], currentTripId, selectTrip, deleteTrip }) {
+  const [openMenuId, setOpenMenuId] = useState(null);
 
   const dashboard = useMemo(() => {
     const totalSpend = tripBills.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
@@ -46,7 +47,7 @@ function Home({ setPage, tripBills = [], tripMembers = [], userProfile, trips = 
   const getIcon = (cat) => ({ Food:"🍜", Ticket:"🎫", Transport:"🚕", Merch:"🛍️" }[cat] || "🧾");
 
   return (
-    <div className="ns-screen">
+    <div className="ns-screen" onClick={() => openMenuId && setOpenMenuId(null)}>
 
       {/* Header */}
       <div className="ns-home-header">
@@ -78,17 +79,24 @@ function Home({ setPage, tripBills = [], tripMembers = [], userProfile, trips = 
       ) : (
         trips.map((trip) => {
           const isActive = trip.id === currentTripId;
+          const memberNames = Array.isArray(trip.memberList) && trip.memberList.length > 0
+            ? trip.memberList
+            : [];
+          const isMenuOpen = openMenuId === trip.id;
+
           return (
             <div
               key={trip.id}
               className="ns-card"
               style={{
-                marginBottom: 10, cursor: "pointer",
+                marginBottom: 10, cursor: "pointer", position: "relative",
                 border: isActive ? "1px solid color-mix(in srgb, var(--ns-g) 40%, transparent)" : "1px solid var(--ns-border)",
                 background: isActive ? "color-mix(in srgb, var(--ns-g) 6%, transparent)" : "var(--ns-card)",
               }}
+              onClick={() => selectTrip(trip.id)}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }} onClick={() => selectTrip(trip.id)}>
+              {/* Top row: icon + title + Active badge + ••• menu */}
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                 <div style={{
                   width: 42, height: 42, borderRadius: 12, flexShrink: 0,
                   background: isActive ? "color-mix(in srgb, var(--ns-g) 15%, transparent)" : "rgba(255,255,255,0.06)",
@@ -96,49 +104,92 @@ function Home({ setPage, tripBills = [], tripMembers = [], userProfile, trips = 
                 }}>
                   ✈️
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: isActive ? "var(--ns-g)" : "var(--ns-text)", marginBottom: 2 }}>
-                    {trip.title}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{
+                      fontSize: 16, fontWeight: 800, color: isActive ? "var(--ns-g)" : "var(--ns-text)",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>
+                      {trip.title}
+                    </div>
+                    {isActive && (
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 100, flexShrink: 0,
+                        background: "color-mix(in srgb, var(--ns-g) 15%, transparent)", color: "var(--ns-g)",
+                        border: "1px solid color-mix(in srgb, var(--ns-g) 30%, transparent)",
+                      }}>
+                        Active
+                      </span>
+                    )}
                   </div>
-                  <div style={{ fontSize: 12, color: "var(--ns-muted)" }}>
-                    {trip.members} members
-                    {trip.location ? ` · ${trip.location}` : ""}
-                    {trip.date ? ` · ${trip.date}` : ""}
+                  <div style={{ fontSize: 12, color: "var(--ns-muted)", marginTop: 3 }}>
+                    {[trip.date, trip.location].filter(Boolean).join(" · ")}
                   </div>
+                  {memberNames.length > 0 && (
+                    <div style={{ fontSize: 12, color: "var(--ns-text2)", marginTop: 4 }}>
+                      👥 {memberNames.join(", ")}
+                    </div>
+                  )}
                 </div>
-                {isActive && (
-                  <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 100, background: "color-mix(in srgb, var(--ns-g) 15%, transparent)", color: "var(--ns-g)", border: "1px solid color-mix(in srgb, var(--ns-g) 30%, transparent)" }}>
-                    Active
-                  </span>
-                )}
-                {!isActive && (
-                  <span style={{ color: "var(--ns-muted)", fontSize: 18 }}>›</span>
-                )}
-              </div>
 
-              {/* Action buttons */}
-              <div style={{ display: "flex", gap: 8, marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--ns-border)" }}>
+                {/* ••• menu */}
                 <button
-                  className="ns-btn ns-btn-dark"
-                  style={{ flex: 1, padding: "8px", fontSize: 12 }}
-                  onClick={() => selectTrip(trip.id)}
-                >
-                  {isActive ? "View Bills" : "Open Trip"}
-                </button>
-                <button
-                  className="ns-btn"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenMenuId(isMenuOpen ? null : trip.id);
+                  }}
                   style={{
-                    flex: 1, padding: "8px", fontSize: 12,
-                    background: "color-mix(in srgb, var(--ns-r) 8%, transparent)",
-                    color: "var(--ns-r)",
-                    border: "1px solid color-mix(in srgb, var(--ns-r) 20%, transparent)",
-                  }}
-                  onClick={() => {
-                    if (window.confirm(`Delete "${trip.title}"?`)) deleteTrip(trip.id);
+                    width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                    background: "transparent", border: "none", cursor: "pointer",
+                    color: "var(--ns-muted)", fontSize: 18, fontWeight: 800,
+                    display: "flex", alignItems: "center", justifyContent: "center",
                   }}
                 >
-                  Delete
+                  •••
                 </button>
+
+                {isMenuOpen && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      position: "absolute", top: 38, right: 0, zIndex: 20,
+                      background: "var(--ns-card2)", border: "1px solid var(--ns-border)",
+                      borderRadius: 12, overflow: "hidden", minWidth: 140,
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        alert("Edit Trip is coming soon.");
+                      }}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left",
+                        padding: "10px 14px", background: "none", border: "none",
+                        color: "var(--ns-text)", fontSize: 13, cursor: "pointer",
+                      }}
+                    >
+                      ✏️ Edit Trip
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        if (window.confirm(`Delete "${trip.title}"?`)) deleteTrip(trip.id);
+                      }}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left",
+                        padding: "10px 14px", background: "none", border: "none",
+                        borderTop: "1px solid var(--ns-border)",
+                        color: "var(--ns-r)", fontSize: 13, cursor: "pointer",
+                      }}
+                    >
+                      🗑 Delete Trip
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           );

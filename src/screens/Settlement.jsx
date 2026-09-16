@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import "../App.css";
- 
+
 function Settlement({
   setPage,
   tripBills = [],
@@ -9,13 +9,13 @@ function Settlement({
   selectedBill = null,
   onSettleAndEarnPoints,
 }) {
- 
+
   const billsForCalculation = useMemo(() => {
     const sourceBills =
       selectedBill && selectedBill.status !== "Finished"
         ? [selectedBill]
         : tripBills.filter((bill) => bill.status !== "Finished");
- 
+
     return sourceBills.map((bill) => {
       const sharedBy =
         Array.isArray(bill.sharedBy) && bill.sharedBy.length > 0
@@ -31,17 +31,17 @@ function Settlement({
       };
     });
   }, [tripBills, selectedBill]);
- 
+
   const result = useMemo(() => {
     const memberSet = new Set(tripMembers);
     billsForCalculation.forEach((bill) => {
       if (bill.paidBy) memberSet.add(bill.paidBy);
       bill.sharedBy.forEach((name) => memberSet.add(name));
     });
- 
+
     const balances = {};
     Array.from(memberSet).forEach((m) => { balances[m] = 0; });
- 
+
     billsForCalculation.forEach((bill) => {
       const amount = Number(bill.amount) || 0;
       const payer = bill.paidBy;
@@ -51,7 +51,7 @@ function Settlement({
       balances[payer] += amount;
       participants.forEach((person) => { balances[person] -= share; });
     });
- 
+
     const creditors = [];
     const debtors = [];
     Object.entries(balances).forEach(([name, balance]) => {
@@ -61,7 +61,7 @@ function Settlement({
     });
     creditors.sort((a, b) => b.amount - a.amount);
     debtors.sort((a, b) => b.amount - a.amount);
- 
+
     const transfers = [];
     let i = 0, j = 0;
     const cCopy = creditors.map(c => ({ ...c }));
@@ -75,34 +75,41 @@ function Settlement({
       if (d.amount <= 0.01) i++;
       if (c.amount <= 0.01) j++;
     }
- 
+
     const totalAmount = billsForCalculation.reduce((s, b) => s + (Number(b.amount) || 0), 0);
     const amountToTransfer = transfers.reduce((s, t) => s + t.amount, 0);
     return { balances, transfers, totalAmount, amountToTransfer };
   }, [billsForCalculation, tripMembers]);
- 
+
   const getCategoryIcon = (cat) =>
     ({ Food:"🍜", Ticket:"🎫", Transport:"🚕", Travel:"🚕", Merch:"🛍️", Hotel:"🏨" }[cat] || "💸");
- 
+
   const isAllSettled = billsForCalculation.length === 0;
   const pointsToEarn = billsForCalculation.length * 10;
- 
+
+  // Only balances that actually mean something — a row that's exactly
+  // 0.00 (paid for exactly their own share, or fully settled already)
+  // has no information value and just clutters the screen.
+  const nonZeroBalances = Object.entries(result.balances).filter(
+    ([, balance]) => Math.abs(balance) > 0.01
+  );
+
   const handleSettleAll = () => {
     settleAllBills();
     if (onSettleAndEarnPoints) onSettleAndEarnPoints(pointsToEarn);
     setPage("pay");
   };
- 
+
   return (
     <div className="ns-screen">
- 
+
       {/* ── Header ── */}
       <div className="ns-page-header">
         <button className="ns-back-btn" onClick={() => setPage("receipt")}>‹</button>
         <span className="ns-title">Settlement</span>
         <div style={{ width: 36 }} />
       </div>
- 
+
       {/* ── Summary hero ── */}
       <div className="ns-card" style={{
         background: "linear-gradient(135deg, color-mix(in srgb, var(--ns-g) 10%, transparent), color-mix(in srgb, var(--ns-g) 3%, transparent))",
@@ -133,7 +140,7 @@ function Settlement({
           </span>
         </div>
       </div>
- 
+
       {/* ── All settled state ── */}
       {isAllSettled && (
         <div className="ns-card" style={{ textAlign: "center", padding: 32, marginBottom: 14 }}>
@@ -141,10 +148,13 @@ function Settlement({
           <div style={{ fontFamily: "var(--ns-syne)", fontSize: 20, fontWeight: 800, color: "var(--ns-g)", marginBottom: 6 }}>
             Everyone is settled!
           </div>
-          <div style={{ fontSize: 13, color: "var(--ns-muted)" }}>No pending bills remaining</div>
+          <div style={{ fontSize: 13, color: "var(--ns-muted)", marginBottom: 16 }}>No transfers remaining.</div>
+          <button className="ns-btn ns-btn-ghost" style={{ width: "auto", padding: "8px 18px", fontSize: 13 }} onClick={() => setPage("billhistory")}>
+            View settlement history
+          </button>
         </div>
       )}
- 
+
       {/* ── Bill Breakdown ── */}
       {billsForCalculation.length > 0 && (
         <>
@@ -187,12 +197,12 @@ function Settlement({
           ))}
         </>
       )}
- 
-      {/* ── Balances ── */}
-      {Object.keys(result.balances).length > 0 && (
+
+      {/* ── Balances — only shown when at least one is actually non-zero ── */}
+      {nonZeroBalances.length > 0 && (
         <>
           <div className="ns-section-label">Balances</div>
-          {Object.entries(result.balances).map(([name, balance], index) => {
+          {nonZeroBalances.map(([name, balance], index) => {
             const isPos = balance >= 0;
             return (
               <div key={name} className="ns-card"
@@ -213,38 +223,42 @@ function Settlement({
           })}
         </>
       )}
- 
+
       {/* ── Smart Transfers ── */}
-      <div className="ns-section-label">Smart Transfers</div>
-      {result.transfers.length === 0 ? (
-        <div className="ns-card" style={{ textAlign: "center", padding: 24 }}>
-          <div style={{ fontSize: 28, marginBottom: 6 }}>✅</div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ns-g)" }}>Everyone is settled!</div>
-        </div>
-      ) : (
-        result.transfers.map((item, index) => (
-          <div key={`${item.from}-${item.to}-${index}`} className="ns-card"
-            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", animationDelay: `${index * 0.08}s`, animation: "cardUp 0.3s ease" }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, color: "var(--ns-muted)", marginBottom: 4 }}>Transfer</div>
-              <div style={{ fontSize: 14, color: "var(--ns-text)" }}>
-                <span style={{ fontWeight: 700, color: "var(--ns-r)" }}>{item.from}</span>
-                <span style={{ margin: "0 8px", color: "var(--ns-muted)" }}>→</span>
-                <span style={{ fontWeight: 700, color: "var(--ns-g)" }}>{item.to}</span>
+      {!isAllSettled && (
+        <>
+          <div className="ns-section-label">Smart Transfers</div>
+          {result.transfers.length === 0 ? (
+            <div className="ns-card" style={{ textAlign: "center", padding: 24 }}>
+              <div style={{ fontSize: 28, marginBottom: 6 }}>✅</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ns-g)" }}>No transfers needed</div>
+            </div>
+          ) : (
+            result.transfers.map((item, index) => (
+              <div key={`${item.from}-${item.to}-${index}`} className="ns-card"
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", animationDelay: `${index * 0.08}s`, animation: "cardUp 0.3s ease" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, color: "var(--ns-muted)", marginBottom: 4 }}>Transfer</div>
+                  <div style={{ fontSize: 14, color: "var(--ns-text)" }}>
+                    <span style={{ fontWeight: 700, color: "var(--ns-r)" }}>{item.from}</span>
+                    <span style={{ margin: "0 8px", color: "var(--ns-muted)" }}>→</span>
+                    <span style={{ fontWeight: 700, color: "var(--ns-g)" }}>{item.to}</span>
+                  </div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontFamily: "var(--ns-syne)", fontSize: 20, fontWeight: 800, color: "var(--ns-g)" }}>{item.amount.toFixed(2)}</div>
+                  <div style={{ fontSize: 10, color: "var(--ns-muted)" }}>THB</div>
+                </div>
               </div>
-            </div>
-            <div style={{ textAlign: "right", flexShrink: 0 }}>
-              <div style={{ fontFamily: "var(--ns-syne)", fontSize: 20, fontWeight: 800, color: "var(--ns-g)" }}>{item.amount.toFixed(2)}</div>
-              <div style={{ fontSize: 10, color: "var(--ns-muted)" }}>THB</div>
-            </div>
-          </div>
-        ))
+            ))
+          )}
+        </>
       )}
- 
+
       {/* ── Actions ── */}
       <button className="ns-btn ns-btn-dark" onClick={() => setPage("exportsummary")}>
-  📤 Export Summary
-</button>
+        📤 Export Summary
+      </button>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
         {!isAllSettled && (
           <button className="ns-btn ns-btn-primary" onClick={handleSettleAll}>
@@ -258,9 +272,9 @@ function Settlement({
           ← Back to Bills
         </button>
       </div>
- 
+
     </div>
   );
 }
- 
+
 export default Settlement;

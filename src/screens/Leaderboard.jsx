@@ -6,43 +6,37 @@ import { ref, onValue, set } from "firebase/database";
 // Fallback used only when a trip hasn't set its own milestones yet —
 // so the feature works immediately with zero setup required.
 const DEFAULT_GANG_REWARDS = [
-  { threshold: 100, label: "Restaurant Picker 🍔", desc: "Winner picks the next movie night" },
+  { threshold: 100, label: "Restaurant Picker 🍔", desc: "Winner picks the next restaurant" },
   { threshold: 250, label: "Dessert Round 🍰", desc: "Group treats everyone to dessert" },
   { threshold: 500, label: "Trip MVP Crown 👑", desc: "Ultimate bragging rights for the trip" },
 ];
 
-function Leaderboard({
-  setPage, authReady, currentTripId, currentTrip, userProfile, tripMembers = [],
-  tripMilestones = [], addGangMilestone, deleteGangMilestone,
-}) {
+function Leaderboard({ setPage, authReady, currentTripId, currentTrip, userProfile, tripMembers = [], tripMilestones = [], addGangMilestone, deleteGangMilestone }) {
   const currentUser = userProfile?.name || "NongTaeyoung";
   const [scores, setScores] = useState({});
   const [showMilestoneForm, setShowMilestoneForm] = useState(false);
   const [newThreshold, setNewThreshold] = useState("");
   const [newLabel, setNewLabel] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [showMenu, setShowMenu] = useState(false);
 
   const isCreator = !!currentTrip?.creator && currentTrip.creator === currentUser;
 
-  // โหลดคะแนนของทริปนี้จาก Firebase — points are scoped per trip now,
-  // so a different trip's leaderboard is a completely separate pool.
-  // App.jsx's addPoints/confirmRedeem own all the writes; this screen
-  // only reads and (via handleReset) clears the pool.
-  // Gated on authReady, same as every other trip-scoped listener in the
-  // app — querying before the anonymous sign-in finishes would fail
-  // against rules that require auth != null.
+  // Ranking and the Gang Reward milestone both read from
+  // memberLifetimePoints — the pool that only ever goes up. Redeeming a
+  // reward spends from a *different* pool (Available Points, tracked in
+  // Rewards.jsx), so cashing in a reward never knocks anyone's rank down.
   useEffect(() => {
     if (!authReady || !currentTripId) {
       setScores({});
       return;
     }
-    const unsub = onValue(ref(db, `trips/${currentTripId}/memberPoints`), (snap) => {
+    const unsub = onValue(ref(db, `trips/${currentTripId}/memberLifetimePoints`), (snap) => {
       setScores(snap.val() || {});
     });
     return () => unsub();
   }, [authReady, currentTripId]);
 
-  // รวม members ทั้งหมด
   const allNames = Array.from(new Set([
     ...tripMembers,
     ...Object.keys(scores),
@@ -79,14 +73,17 @@ function Leaderboard({
 
   const medals = ["👑", "🥈", "🥉"];
 
+  // Reset clears this trip's game state (both lifetime rank points and
+  // whatever's sitting in the available/spendable pool). Global XP
+  // (userPoints, shown on My Points) is never touched by this.
   const handleReset = () => {
     if (!authReady || !currentTripId) return;
     if (!window.confirm("Reset คะแนนของทริปนี้ทุกคนเป็น 0 ใช่ไหม?")) return;
+    setShowMenu(false);
     const resetObj = {};
     allUsers.forEach((u) => { resetObj[u.name] = 0; });
+    set(ref(db, `trips/${currentTripId}/memberLifetimePoints`), resetObj);
     set(ref(db, `trips/${currentTripId}/memberPoints`), resetObj);
-    // Global XP (Level) is untouched — resetting a trip's leaderboard
-    // shouldn't wipe anyone's lifetime progress.
   };
 
   if (!currentTripId) {
@@ -103,30 +100,14 @@ function Leaderboard({
   }
 
   return (
-    <div className="ns-screen">
+    <div className="ns-screen" onClick={() => showMenu && setShowMenu(false)}>
 
-      {/* Header */}
+      {/* Header — just the title now, no crowded button row */}
       <div className="ns-page-header">
         <span className="ns-display">Leaderboard</span>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            className="ns-btn ns-btn-ghost"
-            style={{ width: "auto", padding: "8px 12px", fontSize: 12 }}
-            onClick={handleReset}
-          >
-            🔄 Reset
-          </button>
-          <button
-            className="ns-btn ns-btn-ghost"
-            style={{ width: "auto", padding: "8px 14px", fontSize: 13 }}
-            onClick={() => setPage("mypoints")}
-          >
-            My Points
-          </button>
-        </div>
       </div>
 
-      {/* Gang Reward progress — the reason the leaderboard matters */}
+      {/* Gang Reward progress */}
       <div className="ns-card" style={{
         background: "linear-gradient(135deg, color-mix(in srgb, var(--ns-g) 10%, transparent), color-mix(in srgb, var(--ns-g) 3%, transparent))",
         border: "1px solid color-mix(in srgb, var(--ns-g) 20%, transparent)", marginBottom: 16,
@@ -173,7 +154,7 @@ function Leaderboard({
                   </div>
                   <button
                     type="button"
-                    onClick={() => deleteGangMilestone && deleteGangMilestone(m.id)}
+                    onClick={(e) => { e.stopPropagation(); deleteGangMilestone && deleteGangMilestone(m.id); }}
                     style={{ background: "none", border: "none", color: "var(--ns-r)", cursor: "pointer", fontSize: 13, padding: 0 }}
                   >
                     Remove
@@ -184,7 +165,7 @@ function Leaderboard({
           )}
 
           {showMilestoneForm ? (
-            <div className="ns-card">
+            <div className="ns-card" onClick={(e) => e.stopPropagation()}>
               <div className="ns-input-group">
                 <label className="ns-input-label">Points Threshold</label>
                 <input className="ns-input" type="number" value={newThreshold} onChange={(e) => setNewThreshold(e.target.value)} placeholder="100" />
@@ -203,12 +184,54 @@ function Leaderboard({
               </div>
             </div>
           ) : (
-            <button className="ns-btn ns-btn-dark" onClick={() => setShowMilestoneForm(true)}>
+            <button className="ns-btn ns-btn-dark" onClick={(e) => { e.stopPropagation(); setShowMilestoneForm(true); }}>
               + Edit Milestones
             </button>
           )}
         </div>
       )}
+
+      {/* My Points row — Reset moved into ••• since it's rare/destructive
+          and shouldn't carry the same visual weight as My Points */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, position: "relative" }}>
+        <button className="ns-btn ns-btn-primary" style={{ flex: 1 }} onClick={() => setPage("mypoints")}>
+          My Points →
+        </button>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
+          style={{
+            width: 46, borderRadius: 14, flexShrink: 0,
+            background: "var(--ns-card2)", border: "1px solid var(--ns-border)",
+            color: "var(--ns-muted)", fontSize: 18, fontWeight: 800, cursor: "pointer",
+          }}
+        >
+          •••
+        </button>
+        {showMenu && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "absolute", top: 52, right: 0, zIndex: 20,
+              background: "var(--ns-card2)", border: "1px solid var(--ns-border)",
+              borderRadius: 12, overflow: "hidden", minWidth: 170,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+            }}
+          >
+            <button
+              type="button"
+              onClick={handleReset}
+              style={{
+                display: "block", width: "100%", textAlign: "left",
+                padding: "10px 14px", background: "none", border: "none",
+                color: "var(--ns-r)", fontSize: 13, cursor: "pointer",
+              }}
+            >
+              🔄 Reset Leaderboard
+            </button>
+          </div>
+        )}
+      </div>
 
       {hasAnyPoints ? (
         <>
@@ -303,10 +326,6 @@ function Leaderboard({
           </div>
         </div>
       )}
-
-      <button className="ns-btn ns-btn-primary" style={{ marginTop: 8 }} onClick={() => setPage("mypoints")}>
-        My Points →
-      </button>
     </div>
   );
 }
