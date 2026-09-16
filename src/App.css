@@ -1110,6 +1110,31 @@ body {
    RESPONSIVE
 ═══════════════════════════════════════════ */
 @media (max-width: 480px) {
+  /* On real phones, drop the decorative desktop "phone mockup" frame —
+     no fake bezel, notch, rounded corners, or shadow. Show the app
+     edge-to-edge like a native app instead of a phone nested inside
+     the real device's own screen. */
+  .app-bg {
+    align-items: stretch;
+    background: #05070b;
+  }
+
+  .phone-shell {
+    max-width: 100%;
+  }
+
+  .phone-frame {
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    min-height: 100vh;
+    min-height: 100dvh; /* accounts for mobile browser address-bar chrome */
+  }
+
+  .phone-notch {
+    display: none;
+  }
+
   .trip-summary-title { font-size: 23px; }
   .trip-bill-row { flex-direction: column; align-items: stretch; }
   .trip-bill-right { text-align: left; min-width: unset; }
