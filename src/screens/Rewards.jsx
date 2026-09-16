@@ -17,7 +17,6 @@ function Rewards({
 
   const currentUserName = userProfile?.name;
   const isCreator = !!currentTrip?.creator && currentTrip.creator === currentUserName;
-  const tripPointsLabel = currentTrip?.title ? `${currentTrip.title} Points` : "Trip Points";
 
   const selected = tripRewards.find((r) => r.id === selectedReward);
   const canAfford = selected ? userPoints >= selected.points : false;
@@ -65,7 +64,7 @@ function Rewards({
           background: "color-mix(in srgb, var(--ns-g) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--ns-g) 20%, transparent)",
           fontSize: 12, fontWeight: 700, color: "var(--ns-g)", textAlign: "right",
         }}>
-          {tripPointsLabel}<br />
+          Available Points<br />
           <span style={{ fontSize: 15 }}>{userPoints} pts</span>
         </div>
       </div>
