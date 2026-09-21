@@ -2,6 +2,7 @@ import "./App.css";
 import React, { useState, useEffect, useReducer } from "react";
 import Home from "./screens/Home";
 import CreateTrip from "./screens/Createtrip";
+import EditTrip from "./screens/Edittrip";
 import TripDetail from "./screens/Tripdetail";
 import Bills from "./screens/Bills";
 import BillHistory from "./screens/Billhistory";
@@ -24,7 +25,7 @@ import Navbar from "./components/Navbar";
 import ExportSummary from "./screens/ExportSummary";
 import LandingPage from "./screens/LandingPage";
 import { db, auth } from "./firebase";
-import { ref, onValue, set, remove, runTransaction } from "firebase/database";
+import { ref, onValue, set, remove, runTransaction, get } from "firebase/database";
 import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
 
 const normalizeBill = (bill) => {
@@ -115,7 +116,12 @@ function tripReducer(state, action) {
 }
 
 function App() {
-  const [ui, dispatchUi] = useReducer(uiReducer, initialUiState);
+  // Reload should land back on the screen you were on, not always
+  // splash — restore the initial page from the URL hash if one exists.
+  const [ui, dispatchUi] = useReducer(uiReducer, initialUiState, (init) => {
+    const hashPage = window.location.hash ? window.location.hash.slice(1) : "";
+    return hashPage ? { ...init, page: hashPage } : init;
+  });
   const { page, toast, editingExpense, selectedBill, selectedRedeem, showLanding } = ui;
 
   const [trip, dispatchTrip] = useReducer(tripReducer, initialTripState);
@@ -139,7 +145,17 @@ function App() {
     } catch {}
   };
 
-  const setPage = (p) => dispatchUi({ type: "NAVIGATE", page: p });
+  // Every navigation pushes a real browser history entry (via the URL
+  // hash) — this is what makes the Back button move *within* the app
+  // instead of leaving it, and what lets a reload restore the right
+  // screen (see the lazy useReducer init above).
+  const setPage = (p) => {
+    dispatchUi({ type: "NAVIGATE", page: p });
+    const hash = `#${p}`;
+    if (window.location.hash !== hash) {
+      window.history.pushState({ page: p }, "", hash);
+    }
+  };
   const setToast = (message) => dispatchUi({ type: "SET_TOAST", message });
   const setSelectedBill = (bill) => dispatchUi({ type: "SET_SELECTED_BILL", bill });
   const setSelectedRedeem = (redeem) => dispatchUi({ type: "SET_SELECTED_REDEEM", redeem });
@@ -155,6 +171,53 @@ function App() {
       return { name: "NongTaeyoung", selectedBias: "Taeyong", profileImage: "" };
     }
   });
+
+  // ── Teams ──
+  // A "Team" here is deliberately lightweight: just a saved member list
+  // you can reuse when creating a new trip, so you don't retype the same
+  // gang's names every time. It does NOT own rewards/points/leaderboard —
+  // those stay trip-scoped. A heavier "Team owns everything across
+  // multiple trips" model is a real future option, but not built yet;
+  // this is the safe, additive first step toward it.
+  const [teams, setTeams] = useState([]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    const unsub = onValue(ref(db, "teams"), (snap) => {
+      const data = snap.val();
+      setTeams(data ? Object.values(data) : []);
+    });
+    return () => unsub();
+  }, [authReady]);
+
+  const addTeam = ({ name, memberList }) => {
+    if (!authReady || !name?.trim() || !memberList?.length) return;
+    const id = Date.now().toString();
+    set(ref(db, `teams/${id}`), { id, name: name.trim(), memberList }).catch((err) => {
+      console.error("Failed to save team:", err);
+      setToast("Couldn't save team");
+    });
+    setToast(`Saved "${name.trim()}" as a team ✓`);
+  };
+
+  // ── Back/Forward buttons navigate within the app ──
+  // Without this, the browser (or Android's hardware Back button, once
+  // wrapped as a native app) would just leave NeoSplit entirely instead
+  // of stepping back to the previous screen.
+  useEffect(() => {
+    const handlePopState = (e) => {
+      const p = e.state?.page || (window.location.hash ? window.location.hash.slice(1) : "home");
+      dispatchUi({ type: "NAVIGATE", page: p });
+    };
+    window.addEventListener("popstate", handlePopState);
+
+    // Normalize the very first history entry to match whatever page we
+    // actually started on (replace, not push — this isn't a new visit).
+    const startPage = window.location.hash ? window.location.hash.slice(1) : "splash";
+    window.history.replaceState({ page: startPage }, "", `#${startPage}`);
+
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   // ── Check invite link on load ──
   useEffect(() => {
@@ -470,10 +533,11 @@ function App() {
       return;
     }
 
+    const tripId = currentTripId;
     const newMembers = tripMembers.map((m) => (m === oldName ? trimmed : m));
     const membersObj = {};
     newMembers.forEach((m, i) => { membersObj[i] = m; });
-    set(ref(db, `trips/${currentTripId}/members`), membersObj);
+    set(ref(db, `trips/${tripId}/members`), membersObj);
 
     tripBills.forEach((bill) => {
       let changed = false;
@@ -487,7 +551,32 @@ function App() {
         changed = true;
       }
       if (changed) {
-        set(ref(db, `trips/${currentTripId}/bills/${updated.id}`), updated);
+        set(ref(db, `trips/${tripId}/bills/${updated.id}`), updated);
+      }
+    });
+
+    // Firebase has no atomic "rename a key" operation — a rename is a
+    // read-then-write-then-delete. Points are name-keyed today (not
+    // member IDs), so without this cascade a rename would silently
+    // orphan the old name's history and start the new name back at
+    // zero — exactly the "renaming creates a new person" bug this
+    // exists to prevent.
+    const moveKey = (path) => {
+      get(ref(db, `${path}/${oldName}`)).then((snap) => {
+        if (snap.exists()) {
+          set(ref(db, `${path}/${trimmed}`), snap.val());
+          remove(ref(db, `${path}/${oldName}`));
+        }
+      }).catch((err) => console.error(`Failed to move ${path}:`, err));
+    };
+    moveKey(`trips/${tripId}/memberPoints`);
+    moveKey(`trips/${tripId}/memberLifetimePoints`);
+
+    // Redeem requests reference the member by name in a field, not as
+    // a key — just patch that field on any request that matches.
+    tripRedeems.forEach((req) => {
+      if (req.memberName === oldName) {
+        set(ref(db, `trips/${tripId}/redeemRequests/${req.id}/memberName`), trimmed);
       }
     });
 
@@ -501,6 +590,24 @@ function App() {
     if (currentTripId) set(ref(db, `trips/${currentTripId}/members`), membersObj);
   };
 
+  // ── Edit Trip ──
+  const updateTripDetails = ({ title, date, location }) => {
+    if (!currentTripId) return;
+    if (title !== undefined) set(ref(db, `trips/${currentTripId}/title`), title);
+    if (date !== undefined) set(ref(db, `trips/${currentTripId}/date`), date);
+    if (location !== undefined) set(ref(db, `trips/${currentTripId}/location`), location);
+    setToast("Trip updated ✓");
+  };
+
+  // Opened from Home's ••• menu on any trip card, not just the active
+  // one — so it first makes that trip active, then navigates to the
+  // edit screen (which always edits whatever trip is currently active).
+  const openEditTrip = (id) => {
+    dispatchTrip({ type: "SET_CURRENT_TRIP_ID", id });
+    localStorage.setItem("lastTripId", id);
+    setPage("edittrip");
+  };
+
   // ── Invite link ──
   const getInviteLink = () => {
     if (!currentTripId) return "";
@@ -512,8 +619,9 @@ function App() {
     const p = { setPage, tripBills, tripMembers };
     switch (page) {
       case "splash":          return <Splash setPage={setPage} />;
-      case "home":            return <Home {...p} userProfile={userProfile} trips={trips} currentTripId={currentTripId} selectTrip={selectTrip} deleteTrip={deleteTrip} />;
-      case "create":          return <CreateTrip setPage={setPage} addTrip={addTrip} userProfile={userProfile} />;
+      case "home":            return <Home {...p} userProfile={userProfile} trips={trips} currentTripId={currentTripId} selectTrip={selectTrip} deleteTrip={deleteTrip} openEditTrip={openEditTrip} />;
+      case "create":          return <CreateTrip setPage={setPage} addTrip={addTrip} userProfile={userProfile} teams={teams} addTeam={addTeam} />;
+      case "edittrip":        return <EditTrip setPage={setPage} currentTrip={currentTrip} tripMembers={tripMembers} tripBills={tripBills} updateTripDetails={updateTripDetails} addMember={addMember} removeMember={removeMember} editMember={editMember} />;
       case "tripdetail":      return <TripDetail {...p} deleteExpense={deleteExpense} startEditExpense={startEditExpense} deleteTrip={deleteTrip} currentTrip={currentTrip} currentTripId={currentTripId} getInviteLink={getInviteLink} />;
       case "addexpense":      return <AddExpense {...p} addExpense={addExpense} addMember={addMember} removeMember={removeMember} editMember={editMember} />;
       case "editexpense":     return <EditExpense {...p} editingExpense={editingExpense} updateExpense={updateExpense} />;

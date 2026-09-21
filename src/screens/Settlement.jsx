@@ -1,5 +1,24 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import "../App.css";
+
+// Splits `amount` (THB) among `people` so the satang amounts always sum
+// to exactly `amount` — no more "33.33 × 3 = 99.99, where did the last
+// satang go" ambiguity. Whoever's left over gets it deterministically
+// (first people in the list, in order), so the same bill always splits
+// the same way every time it's recalculated, not just on average.
+const splitDeterministic = (amount, people) => {
+  const n = people.length;
+  const result = {};
+  if (n === 0) return result;
+  const totalCents = Math.round((Number(amount) || 0) * 100);
+  const baseCents = Math.floor(totalCents / n);
+  const remainderCents = totalCents - baseCents * n; // 0..n-1 leftover satang
+  people.forEach((person, i) => {
+    const cents = baseCents + (i < remainderCents ? 1 : 0);
+    result[person] = cents / 100;
+  });
+  return result;
+};
 
 function Settlement({
   setPage,
@@ -9,6 +28,7 @@ function Settlement({
   selectedBill = null,
   onSettleAndEarnPoints,
 }) {
+  const [expandedBalance, setExpandedBalance] = useState(null);
 
   const billsForCalculation = useMemo(() => {
     const sourceBills =
@@ -47,9 +67,9 @@ function Settlement({
       const payer = bill.paidBy;
       const participants = bill.sharedBy || [];
       if (!payer || participants.length === 0) return;
-      const share = amount / participants.length;
+      const shares = splitDeterministic(amount, participants);
       balances[payer] += amount;
-      participants.forEach((person) => { balances[person] -= share; });
+      participants.forEach((person) => { balances[person] -= shares[person]; });
     });
 
     const creditors = [];
@@ -93,6 +113,28 @@ function Settlement({
   const nonZeroBalances = Object.entries(result.balances).filter(
     ([, balance]) => Math.abs(balance) > 0.01
   );
+
+  // Answers "what actually adds up to this number" for a given person —
+  // the Smart Transfer amount itself is a netted, minimized transfer and
+  // doesn't map 1:1 back to individual bills, but a person's own balance
+  // does: it's just the sum of what they paid minus what they owe,
+  // bill by bill. This is what makes that sum inspectable.
+  const getContributions = (name) => {
+    return billsForCalculation
+      .map((bill) => {
+        const isPayer = bill.paidBy === name;
+        const isParticipant = bill.sharedBy.includes(name);
+        if (!isPayer && !isParticipant) return null;
+        const shares = splitDeterministic(bill.amount, bill.sharedBy);
+        const myShare = isParticipant ? shares[name] : 0;
+        let net = 0;
+        if (isPayer) net += bill.amount;
+        if (isParticipant) net -= myShare;
+        if (Math.abs(net) < 0.005) return null; // paid for self only — no net effect
+        return { name: bill.name, net, isPayer, isParticipant, share: myShare, amount: bill.amount };
+      })
+      .filter(Boolean);
+  };
 
   const handleSettleAll = () => {
     settleAllBills();
@@ -202,22 +244,50 @@ function Settlement({
       {nonZeroBalances.length > 0 && (
         <>
           <div className="ns-section-label">Balances</div>
+          <div style={{ fontSize: 11, color: "var(--ns-muted)", marginTop: -8, marginBottom: 10 }}>
+            Tap a balance to see what it's made of
+          </div>
           {nonZeroBalances.map(([name, balance], index) => {
             const isPos = balance >= 0;
+            const isExpanded = expandedBalance === name;
+            const contributions = isExpanded ? getContributions(name) : [];
             return (
-              <div key={name} className="ns-card"
-                style={{ display: "flex", alignItems: "center", gap: 14, animationDelay: `${index * 0.06}s`, animation: "cardUp 0.3s ease", borderColor: isPos ? "color-mix(in srgb, var(--ns-g) 15%, transparent)" : "color-mix(in srgb, var(--ns-r) 15%, transparent)" }}>
-                <div style={{ width: 42, height: 42, borderRadius: "50%", flexShrink: 0, background: isPos ? "color-mix(in srgb, var(--ns-g) 15%, transparent)" : "color-mix(in srgb, var(--ns-r) 15%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--ns-syne)", fontSize: 18, fontWeight: 800, color: isPos ? "var(--ns-g)" : "var(--ns-r)", border: `1px solid ${isPos ? "color-mix(in srgb, var(--ns-g) 25%, transparent)" : "color-mix(in srgb, var(--ns-r) 25%, transparent)"}` }}>
-                  {name.charAt(0).toUpperCase()}
+              <div key={name} className="ns-card ns-clickable"
+                style={{ animationDelay: `${index * 0.06}s`, animation: "cardUp 0.3s ease", borderColor: isPos ? "color-mix(in srgb, var(--ns-g) 15%, transparent)" : "color-mix(in srgb, var(--ns-r) 15%, transparent)", cursor: "pointer" }}
+                onClick={() => setExpandedBalance(isExpanded ? null : name)}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <div style={{ width: 42, height: 42, borderRadius: "50%", flexShrink: 0, background: isPos ? "color-mix(in srgb, var(--ns-g) 15%, transparent)" : "color-mix(in srgb, var(--ns-r) 15%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--ns-syne)", fontSize: 18, fontWeight: 800, color: isPos ? "var(--ns-g)" : "var(--ns-r)", border: `1px solid ${isPos ? "color-mix(in srgb, var(--ns-g) 25%, transparent)" : "color-mix(in srgb, var(--ns-r) 25%, transparent)"}` }}>
+                    {name.charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ns-text)", marginBottom: 3 }}>{name}</div>
+                    <div style={{ fontSize: 12, color: "var(--ns-muted)" }}>{isPos ? "Gets back" : "Owes"}</div>
+                  </div>
+                  <div style={{ fontFamily: "var(--ns-syne)", fontSize: 18, fontWeight: 800, color: isPos ? "var(--ns-g)" : "var(--ns-r)", textAlign: "right" }}>
+                    {isPos ? "+" : "-"}{Math.abs(balance).toFixed(2)}
+                    <div style={{ fontSize: 10, color: "var(--ns-muted)", fontFamily: "var(--ns-dm)", fontWeight: 400 }}>THB</div>
+                  </div>
+                  <span style={{ color: "var(--ns-muted)", fontSize: 14, marginLeft: 4 }}>{isExpanded ? "▲" : "▼"}</span>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ns-text)", marginBottom: 3 }}>{name}</div>
-                  <div style={{ fontSize: 12, color: "var(--ns-muted)" }}>{isPos ? "Gets back" : "Owes"}</div>
-                </div>
-                <div style={{ fontFamily: "var(--ns-syne)", fontSize: 18, fontWeight: 800, color: isPos ? "var(--ns-g)" : "var(--ns-r)", textAlign: "right" }}>
-                  {isPos ? "+" : "-"}{Math.abs(balance).toFixed(2)}
-                  <div style={{ fontSize: 10, color: "var(--ns-muted)", fontFamily: "var(--ns-dm)", fontWeight: 400 }}>THB</div>
-                </div>
+
+                {isExpanded && (
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--ns-border)", display: "flex", flexDirection: "column", gap: 8 }}>
+                    {contributions.map((c, i) => (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                        <span style={{ color: "var(--ns-text2)" }}>
+                          {c.name}
+                          {c.isPayer && c.isParticipant && ` (paid ${c.amount.toFixed(2)}, your share ${c.share.toFixed(2)})`}
+                          {c.isPayer && !c.isParticipant && ` (paid ${c.amount.toFixed(2)} for others)`}
+                          {!c.isPayer && c.isParticipant && ` (your share)`}
+                        </span>
+                        <span style={{ fontWeight: 700, color: c.net >= 0 ? "var(--ns-g)" : "var(--ns-r)", flexShrink: 0, marginLeft: 10 }}>
+                          {c.net >= 0 ? "+" : ""}{c.net.toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}

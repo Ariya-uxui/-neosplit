@@ -34,7 +34,7 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense, 
         </button>
       </div>
 
-      {/* ── Invite + Delete row ── */}
+      {/* ── Invite + Edit + Delete row ── */}
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
         <button
           className="ns-btn ns-btn-dark"
@@ -48,6 +48,13 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense, 
           }}
         >
           🔗 Share Invite Link
+        </button>
+        <button
+          className="ns-btn ns-btn-dark"
+          style={{ width: "auto", padding: "10px 14px", fontSize: 13 }}
+          onClick={() => setPage("edittrip")}
+        >
+          ✏️
         </button>
         <button
           className="ns-btn"

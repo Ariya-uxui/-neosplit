@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import "../App.css";
 
-function Home({ setPage, tripBills = [], tripMembers = [], userProfile, trips = [], currentTripId, selectTrip, deleteTrip }) {
+function Home({ setPage, tripBills = [], tripMembers = [], userProfile, trips = [], currentTripId, selectTrip, deleteTrip, openEditTrip }) {
   const [openMenuId, setOpenMenuId] = useState(null);
 
   const dashboard = useMemo(() => {
@@ -163,7 +163,7 @@ function Home({ setPage, tripBills = [], tripMembers = [], userProfile, trips = 
                       type="button"
                       onClick={() => {
                         setOpenMenuId(null);
-                        alert("Edit Trip is coming soon.");
+                        if (openEditTrip) openEditTrip(trip.id);
                       }}
                       style={{
                         display: "block", width: "100%", textAlign: "left",
