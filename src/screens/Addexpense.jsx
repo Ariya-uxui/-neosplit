@@ -116,6 +116,21 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
         <span className="ns-title">Add Bill</span>
         <div style={{ width: 36 }} />
       </div>
+
+      <button
+        type="button"
+        onClick={() => setPage("scanreceipt")}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          width: "100%", padding: "10px", marginBottom: 14,
+          borderRadius: 14, cursor: "pointer",
+          background: "color-mix(in srgb, var(--ns-g) 8%, transparent)",
+          border: "1px dashed color-mix(in srgb, var(--ns-g) 30%, transparent)",
+          color: "var(--ns-g)", fontSize: 13, fontWeight: 700,
+        }}
+      >
+        📷 Scan Receipt instead
+      </button>
  
       <form onSubmit={handleSubmit}>
         <div className="ns-card">
