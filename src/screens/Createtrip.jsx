@@ -26,7 +26,10 @@ function CreateTrip({ setPage, addTrip, userProfile, teams = [], addTeam }) {
     setMembers(prev => prev.filter(m => m !== name));
   };
 
-  const useTeam = (team) => {
+  // NOTE: named applyTeam (not "useTeam") on purpose — any function whose
+  // name starts with "use" is treated by React's ESLint rules as a Hook,
+  // which then breaks because it's called inside an onClick callback.
+  const applyTeam = (team) => {
     const merged = Array.from(new Set([...(creatorName ? [creatorName] : []), ...team.memberList]));
     setMembers(merged);
     setErrors(e => ({ ...e, members: "" }));
@@ -95,7 +98,7 @@ function CreateTrip({ setPage, addTrip, userProfile, teams = [], addTeam }) {
               <button
                 key={team.id}
                 type="button"
-                onClick={() => useTeam(team)}
+                onClick={() => applyTeam(team)}
                 style={{
                   padding: "7px 14px", borderRadius: 100, cursor: "pointer",
                   background: "var(--ns-card2)", border: "1px solid var(--ns-border)",

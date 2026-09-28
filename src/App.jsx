@@ -2,7 +2,7 @@ import "./App.css";
 import React, { useState, useEffect, useReducer } from "react";
 import Home from "./screens/Home";
 import CreateTrip from "./screens/Createtrip";
-import EditTrip from "./screens/Edittrip";
+import EditTrip from "./screens/EditTrip";
 import TripDetail from "./screens/Tripdetail";
 import Bills from "./screens/Bills";
 import BillHistory from "./screens/Billhistory";
