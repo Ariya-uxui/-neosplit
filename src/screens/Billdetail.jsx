@@ -49,7 +49,7 @@ function BillDetail({ setPage, selectedBill, startEditExpense }) {
         <div className="ns-detail-hero-name">{title}</div>
         <div className="ns-detail-hero-amount">{amount.toLocaleString()} THB</div>
         <span className={`ns-badge ns-mt-8 ${isFinished ? "ns-badge-green" : "ns-badge-yellow"}`}>
-          {isFinished ? "✅ Settled" : "⏳ Pending"}
+          {isFinished ? "✅ Split Complete" : "⏳ Pending"}
         </span>
       </div>
  

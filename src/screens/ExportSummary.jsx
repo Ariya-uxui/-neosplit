@@ -5,16 +5,21 @@ function ExportSummary({ setPage, tripBills = [], tripMembers = [], userProfile 
   const total = tripBills.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
   const settled = tripBills.filter(b => b.status === "Finished").length;
  
+  // Only unsettled bills count toward outstanding balances — a bill marked
+  // "Split Complete" has already been resolved, so it shouldn't still show
+  // up as money someone owes. (Mirrors the same filter Settlement.jsx uses.)
   const balances = useMemo(() => {
     const bal = {};
     tripMembers.forEach(m => { bal[m] = 0; });
-    tripBills.forEach((bill) => {
-      const amt = Number(bill.amount) || 0;
-      const participants = bill.sharedBy?.length > 0 ? bill.sharedBy : tripMembers;
-      const share = amt / participants.length;
-      if (bal[bill.paidBy] !== undefined) bal[bill.paidBy] += amt;
-      participants.forEach(p => { if (bal[p] !== undefined) bal[p] -= share; });
-    });
+    tripBills
+      .filter(b => b.status !== "Finished")
+      .forEach((bill) => {
+        const amt = Number(bill.amount) || 0;
+        const participants = bill.sharedBy?.length > 0 ? bill.sharedBy : tripMembers;
+        const share = amt / participants.length;
+        if (bal[bill.paidBy] !== undefined) bal[bill.paidBy] += amt;
+        participants.forEach(p => { if (bal[p] !== undefined) bal[p] -= share; });
+      });
     return bal;
   }, [tripBills, tripMembers]);
  
@@ -31,7 +36,7 @@ function ExportSummary({ setPage, tripBills = [], tripMembers = [], userProfile 
       "🧾 NeoSplit - Trip Summary",
       "═══════════════════════",
       `💰 Total: ${total.toLocaleString()} THB`,
-      `✅ Settled: ${settled}/${tripBills.length} bills`,
+      `✅ Split Complete: ${settled}/${tripBills.length} bills`,
       "",
       "📊 Bills:",
       ...tripBills.map(b => `  • ${b.name}: ${Number(b.amount).toLocaleString()} THB (${b.paidBy})`),
@@ -73,7 +78,7 @@ function ExportSummary({ setPage, tripBills = [], tripMembers = [], userProfile 
           <span style={{ fontSize: 16, color: "var(--ns-muted)", marginLeft: 6 }}>THB</span>
         </div>
         <div style={{ fontSize: 13, color: "var(--ns-muted)", marginTop: 4 }}>
-          {settled}/{tripBills.length} bills settled
+          {settled}/{tripBills.length} bills split complete
         </div>
       </div>
  
@@ -91,7 +96,10 @@ function ExportSummary({ setPage, tripBills = [], tripMembers = [], userProfile 
       </div>
  
       {/* ── Balances ── */}
-      <div className="ns-section-label">Balances</div>
+      <div className="ns-section-label" style={{ marginBottom: 2 }}>Balances</div>
+      <div style={{ fontSize: 11, color: "var(--ns-muted)", marginBottom: 10 }}>
+        Bills already split complete aren't counted — this is what's still outstanding
+      </div>
       <div className="ns-card" style={{ marginBottom: 14 }}>
         {Object.entries(balances).map(([name, bal]) => {
           const isPos = bal >= 0;

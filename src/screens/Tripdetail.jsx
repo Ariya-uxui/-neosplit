@@ -172,7 +172,7 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense, 
 
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span className={`ns-badge ${isFinished ? "ns-badge-green" : "ns-badge-yellow"}`}>
-                  {isFinished ? "✅ Settled" : "⏳ Pending"}
+                  {isFinished ? "✅ Split Complete" : "⏳ Pending"}
                 </span>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button

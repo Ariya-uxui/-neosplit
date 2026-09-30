@@ -14,6 +14,7 @@ import Settlement from "./screens/Settlement";
 import Pay from "./screens/Pay";
 import ThankYou from "./screens/Thankyou";
 import AddExpense from "./screens/Addexpense";
+import ScanReceipt from "./screens/ScanReceipt";
 import Leaderboard from "./screens/Leaderboard";
 import MyPoints from "./screens/Mypoints";
 import YourRedeem from "./screens/YourRedeem";
@@ -539,6 +540,22 @@ function App() {
     newMembers.forEach((m, i) => { membersObj[i] = m; });
     set(ref(db, `trips/${tripId}/members`), membersObj);
 
+    // Trip creator is also stored as a plain name, separate from the
+    // members list — if the creator renames themself, they'd otherwise
+    // silently lose creator-only controls (Edit Milestones, Create
+    // Reward, Confirm Redeem, Reset Leaderboard) on this trip.
+    if (currentTrip?.creator === oldName) {
+      set(ref(db, `trips/${tripId}/creator`), trimmed);
+    }
+
+    // Your own device profile name is stored separately from trip
+    // membership — if you rename yourself as a member, keep it in sync
+    // too, or the app stops recognizing you as "You" (Leaderboard
+    // highlight, isCreator checks) on this trip.
+    if (userProfile?.name === oldName) {
+      setUserProfile((prev) => ({ ...prev, name: trimmed }));
+    }
+
     tripBills.forEach((bill) => {
       let changed = false;
       const updated = { ...bill };
@@ -624,6 +641,7 @@ function App() {
       case "edittrip":        return <EditTrip setPage={setPage} currentTrip={currentTrip} tripMembers={tripMembers} tripBills={tripBills} updateTripDetails={updateTripDetails} addMember={addMember} removeMember={removeMember} editMember={editMember} />;
       case "tripdetail":      return <TripDetail {...p} deleteExpense={deleteExpense} startEditExpense={startEditExpense} deleteTrip={deleteTrip} currentTrip={currentTrip} currentTripId={currentTripId} getInviteLink={getInviteLink} />;
       case "addexpense":      return <AddExpense {...p} addExpense={addExpense} addMember={addMember} removeMember={removeMember} editMember={editMember} />;
+      case "scanreceipt":     return <ScanReceipt {...p} addExpense={addExpense} userProfile={userProfile} />;
       case "editexpense":     return <EditExpense {...p} editingExpense={editingExpense} updateExpense={updateExpense} />;
       case "receipt":         return <Bills {...p} setSelectedBill={setSelectedBill} />;
       case "billhistory":     return <BillHistory {...p} setSelectedBill={setSelectedBill} />;

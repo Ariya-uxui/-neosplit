@@ -332,7 +332,7 @@ function Settlement({
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
         {!isAllSettled && (
           <button className="ns-btn ns-btn-primary" onClick={handleSettleAll}>
-            🎉 Settle All & Earn +{pointsToEarn} pts
+            🎉 Complete Split & Earn +{pointsToEarn} pts
           </button>
         )}
         <button className="ns-btn ns-btn-dark" onClick={() => setPage("splitbill")}>

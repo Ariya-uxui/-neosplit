@@ -51,6 +51,17 @@ function Leaderboard({ setPage, authReady, currentTripId, currentTrip, userProfi
     }))
     .sort((a, b) => b.points - a.points);
 
+  // Competition ranking ("1224"): equal points share the same rank
+  // number, and the next distinct score skips ahead accordingly — so
+  // two people tied at 0 pts both show as Rank #2 instead of one
+  // silently outranking the other just from sort/insertion order.
+  const ranks = allUsers.map((u, i) =>
+    i === 0 || u.points !== allUsers[i - 1].points ? i + 1 : null
+  );
+  for (let i = 1; i < ranks.length; i++) {
+    if (ranks[i] === null) ranks[i] = ranks[i - 1];
+  }
+
   const groupTotal = allUsers.reduce((sum, u) => sum + u.points, 0);
   const hasAnyPoints = allUsers.some((u) => u.points > 0);
   const activeMilestones = tripMilestones.length > 0
@@ -237,13 +248,17 @@ function Leaderboard({ setPage, authReady, currentTripId, currentTrip, userProfi
         <>
           {/* Top 3 podium */}
           <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", gap: 12, marginBottom: 20, padding: "20px 0" }}>
-            {[allUsers[1], allUsers[0], allUsers[2]].map((user, i) => {
+            {[1, 0, 2].map((userIndex, i) => {
+              const user = allUsers[userIndex];
               if (!user) return <div key={i} style={{ width: 90 }} />;
               const heights = [80, 100, 60];
-              const rank = i === 1 ? 0 : i === 0 ? 1 : 2;
+              // Medal reflects this person's actual (possibly tied) rank,
+              // not just which podium slot they're drawn in — so two
+              // people tied for 2nd both get 🥈, not 🥈 and 🥉.
+              const rank = ranks[userIndex];
               return (
                 <div key={user.name} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                  <div style={{ fontSize: 24 }}>{medals[rank] || "⭐"}</div>
+                  <div style={{ fontSize: 24 }}>{medals[rank - 1] || "⭐"}</div>
                   <div style={{
                     width: 52, height: 52, borderRadius: "50%",
                     background: user.isMe ? "color-mix(in srgb, var(--ns-g) 20%, transparent)" : "rgba(255,255,255,0.08)",
@@ -290,7 +305,7 @@ function Leaderboard({ setPage, authReady, currentTripId, currentTrip, userProfi
               }}
             >
               <div style={{ fontSize: 20, width: 28, textAlign: "center" }}>
-                {medals[index] || `#${index + 1}`}
+                {medals[ranks[index] - 1] || `#${ranks[index]}`}
               </div>
               <div style={{
                 width: 40, height: 40, borderRadius: "50%",
@@ -306,11 +321,11 @@ function Leaderboard({ setPage, authReady, currentTripId, currentTrip, userProfi
                 <div style={{ fontSize: 14, fontWeight: 700, color: user.isMe ? "var(--ns-g)" : "var(--ns-text)" }}>
                   {user.isMe ? `${user.name} (You)` : user.name}
                 </div>
-                <div style={{ fontSize: 11, color: "var(--ns-muted)" }}>Rank #{index + 1}</div>
+                <div style={{ fontSize: 11, color: "var(--ns-muted)" }}>Rank #{ranks[index]}</div>
               </div>
               <div style={{ fontFamily: "var(--ns-syne)", fontSize: 18, fontWeight: 800, color: user.isMe ? "var(--ns-g)" : "var(--ns-text)" }}>
                 {user.points}
-                <span style={{ fontSize: 11, color: "var(--ns-muted)", marginLeft: 3 }}>pts</span>
+                <span style={{ fontSize: 11, color: "var(--ns-muted)", marginLeft: 3 }}>Gang Pts</span>
               </div>
             </div>
           ))}

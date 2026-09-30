@@ -1,6 +1,7 @@
 {
   "short_name": "NeoSplit",
   "name": "NeoSplit - Gamified Expense Splitting",
+  "id": "/",
   "icons": [
     {
       "src": "logo192.png",

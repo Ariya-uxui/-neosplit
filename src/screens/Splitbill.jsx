@@ -175,9 +175,12 @@ function SplitBill({ setPage, tripBills = [], tripMembers = [], setSelectedBill 
           <div style={{ fontFamily: "var(--ns-syne)", fontSize: 44, fontWeight: 800, letterSpacing: "-2px", color: "var(--ns-g)", lineHeight: 1 }}>
             {equalPerPerson.toFixed(2)}
           </div>
-          <div style={{ fontSize: 14, color: "var(--ns-muted)", marginTop: 6 }}>
-            THB · split across {tripMembers.length} people
-          </div>
+          <div style={{ fontSize: 14, color: "var(--ns-muted)", marginTop: 6 }}>THB / person</div>
+          {tripMembers.length > 0 && (
+            <div style={{ fontSize: 12, color: "var(--ns-muted)", marginTop: 8 }}>
+              {tripMembers.join(" · ")}
+            </div>
+          )}
         </div>
       )}
 
@@ -230,7 +233,7 @@ function SplitBill({ setPage, tripBills = [], tripMembers = [], setSelectedBill 
         style={{ marginTop: mode === "Equal" ? 8 : 10 }}
         onClick={() => setPage("settlement")}
       >
-        ← Back to Settlement
+        {mode === "Equal" ? "View Settlement →" : "← Back to Settlement"}
       </button>
     </div>
   );

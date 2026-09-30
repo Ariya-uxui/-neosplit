@@ -64,7 +64,7 @@ function Rewards({
           background: "color-mix(in srgb, var(--ns-g) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--ns-g) 20%, transparent)",
           fontSize: 12, fontWeight: 700, color: "var(--ns-g)", textAlign: "right",
         }}>
-          Available Points<br />
+          🎁 Reward Points<br />
           <span style={{ fontSize: 15 }}>{userPoints} pts</span>
         </div>
       </div>
