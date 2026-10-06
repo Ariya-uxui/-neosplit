@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import "../App.css";
 
-function EditTrip({ setPage, currentTrip, tripMembers = [], tripBills = [], updateTripDetails, addMember, removeMember, editMember }) {
+function EditTrip({ setPage, currentTrip, tripMembers = [], tripBills = [], userProfile, updateTripDetails, addMember, removeMember, editMember, claimTripCreator }) {
   const [tripName, setTripName] = useState(currentTrip?.title || "");
   const [date, setDate] = useState(currentTrip?.date || "");
   const [location, setLocation] = useState(currentTrip?.location || "");
@@ -90,6 +90,21 @@ function EditTrip({ setPage, currentTrip, tripMembers = [], tripBills = [], upda
     setPage("tripdetail");
   };
 
+  // Lets you recover creator access on a trip whose stored "creator"
+  // field never matched your profile name (e.g. an older trip created
+  // before the auto-add-yourself logic existed, or after a rename that
+  // predates the cascading-rename fix). Also makes sure you're listed
+  // as a member, since a trip's creator should always be part of it.
+  const isAlreadyCreator = !!currentTrip?.creator && currentTrip.creator === userProfile?.name;
+  const handleClaimCreator = () => {
+    if (!userProfile?.name) return;
+    const ok = window.confirm(
+      `Make "${userProfile.name}" the creator of this trip?\n\nThis gives you access to Edit Milestones, Create Reward, and Confirm Redeem for "${currentTrip?.title || "this trip"}".`
+    );
+    if (!ok) return;
+    claimTripCreator && claimTripCreator();
+  };
+
   return (
     <div className="ns-screen">
 
@@ -118,6 +133,31 @@ function EditTrip({ setPage, currentTrip, tripMembers = [], tripBills = [], upda
           {errors.location && <p className="ns-error">{errors.location}</p>}
         </div>
       </div>
+
+      {/* ── Creator access — only shown when it's actually out of sync ── */}
+      {!isAlreadyCreator && userProfile?.name && (
+        <div className="ns-card" style={{
+          background: "color-mix(in srgb, var(--ns-g) 6%, transparent)",
+          border: "1px solid color-mix(in srgb, var(--ns-g) 25%, transparent)",
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ns-text)", marginBottom: 4 }}>
+            👑 Creator access
+          </div>
+          <div style={{ fontSize: 12, color: "var(--ns-muted)", marginBottom: 10 }}>
+            This trip's creator is currently{" "}
+            <strong style={{ color: "var(--ns-text2)" }}>{currentTrip?.creator || "not set"}</strong>,
+            which doesn't match your profile name ({userProfile.name}). That's why you can't
+            edit milestones or confirm redeems here.
+          </div>
+          <button
+            type="button"
+            className="ns-btn ns-btn-dark"
+            onClick={handleClaimCreator}
+          >
+            Make {userProfile.name} the creator
+          </button>
+        </div>
+      )}
 
       {/* ── Members ── */}
       <div className="ns-card">

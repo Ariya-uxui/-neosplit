@@ -131,6 +131,15 @@ function App() {
   const [userPoints, setUserPoints] = useState(0);
   const [tripPoints, setTripPoints] = useState(0);
   const [authReady, setAuthReady] = useState(false);
+  // This device's anonymous Firebase auth ID — the key used to track
+  // "which trips belong to me" (see myTripIds below), separate from
+  // userProfile.name (which is just a display name people can share).
+  const [myUid, setMyUid] = useState(null);
+  // IDs of trips this device has created, joined via invite link, or
+  // opened before. Home only shows trips in this list, so someone who
+  // installs the app fresh sees an empty "Your Trips" instead of every
+  // trip that's ever been made in the database.
+  const [myTripIds, setMyTripIds] = useState([]);
   const [theme, setThemeState] = useState(() => {
     try {
       return localStorage.getItem("neosplitTheme") || "neon";
@@ -239,6 +248,7 @@ function App() {
     const unsub = onAuthStateChanged(auth, (user) => {
       if (user) {
         setAuthReady(true);
+        setMyUid(user.uid);
       } else {
         signInAnonymously(auth).catch((err) => {
           console.error("Anonymous sign-in failed:", err);
@@ -258,12 +268,30 @@ function App() {
     return () => unsub();
   }, [authReady]);
 
+  // ── "Which trips are mine" list ──
+  // Drives what Home shows under "Your Trips". Lives at userTrips/{myUid}
+  // rather than on the trip itself, since several people share one trip.
+  useEffect(() => {
+    if (!authReady || !myUid) return;
+    const unsub = onValue(ref(db, `userTrips/${myUid}`), (snap) => {
+      const data = snap.val();
+      setMyTripIds(data ? Object.keys(data) : []);
+    });
+    return () => unsub();
+  }, [authReady, myUid]);
+
   // ── Load current trip data when tripId changes ──
   useEffect(() => {
     if (!authReady || !currentTripId) return;
     const unsubTrip = onValue(ref(db, `trips/${currentTripId}`), (snap) => {
       const data = snap.val();
-      if (data) dispatchTrip({ type: "SET_CURRENT_TRIP", trip: data });
+      if (data) {
+        dispatchTrip({ type: "SET_CURRENT_TRIP", trip: data });
+        // Opening a trip — whether you created it, followed an invite
+        // link to it, or it's one you used before — marks it as yours,
+        // so it keeps showing on your Home screen going forward.
+        if (myUid) set(ref(db, `userTrips/${myUid}/${currentTripId}`), true);
+      }
     });
     const unsubBills = onValue(ref(db, `trips/${currentTripId}/bills`), (snap) => {
       const data = snap.val();
@@ -286,7 +314,7 @@ function App() {
       dispatchTrip({ type: "SET_TRIP_MILESTONES", milestones: data ? Object.values(data) : [] });
     });
     return () => { unsubTrip(); unsubBills(); unsubMembers(); unsubRewards(); unsubRedeems(); unsubMilestones(); };
-  }, [authReady, currentTripId]);
+  }, [authReady, currentTripId, myUid]);
 
   // ── Load points ──
   useEffect(() => {
@@ -368,6 +396,9 @@ function App() {
         console.error("Failed to save trip members:", err);
       });
     }
+    // Mark it as yours right away, so it's not briefly missing from
+    // Home while the view-triggered grant (above) catches up.
+    if (myUid) set(ref(db, `userTrips/${myUid}/${id}`), true);
     dispatchTrip({ type: "SET_CURRENT_TRIP_ID", id });
     localStorage.setItem("lastTripId", id);
     setToast("Trip created! 🚀");
@@ -616,6 +647,24 @@ function App() {
     setToast("Trip updated ✓");
   };
 
+  // Lets the current profile claim creator status on the active trip —
+  // recovery path for a trip whose stored "creator" field never matched
+  // (an older trip from before auto-add-yourself existed, or a rename
+  // that happened before the cascading-rename fix). Also adds you as a
+  // member if you aren't one, since a trip's creator should be in it.
+  const claimTripCreator = () => {
+    if (!currentTripId || !userProfile?.name) return;
+    const trimmed = userProfile.name.trim();
+    set(ref(db, `trips/${currentTripId}/creator`), trimmed);
+    if (!tripMembers.includes(trimmed)) {
+      const newMembers = [...tripMembers, trimmed];
+      const membersObj = {};
+      newMembers.forEach((m, i) => { membersObj[i] = m; });
+      set(ref(db, `trips/${currentTripId}/members`), membersObj);
+    }
+    setToast(`You're now this trip's creator ✓`);
+  };
+
   // Opened from Home's ••• menu on any trip card, not just the active
   // one — so it first makes that trip active, then navigates to the
   // edit screen (which always edits whatever trip is currently active).
@@ -634,11 +683,14 @@ function App() {
   // ── Router ──
   const renderPage = () => {
     const p = { setPage, tripBills, tripMembers };
+    // Home only shows trips this device has created, joined, or opened
+    // before — not every trip anyone has ever made (see myTripIds).
+    const myTrips = trips.filter((t) => myTripIds.includes(t.id));
     switch (page) {
       case "splash":          return <Splash setPage={setPage} />;
-      case "home":            return <Home {...p} userProfile={userProfile} trips={trips} currentTripId={currentTripId} selectTrip={selectTrip} deleteTrip={deleteTrip} openEditTrip={openEditTrip} />;
+      case "home":            return <Home {...p} userProfile={userProfile} trips={myTrips} currentTripId={currentTripId} selectTrip={selectTrip} deleteTrip={deleteTrip} openEditTrip={openEditTrip} />;
       case "create":          return <CreateTrip setPage={setPage} addTrip={addTrip} userProfile={userProfile} teams={teams} addTeam={addTeam} />;
-      case "edittrip":        return <EditTrip setPage={setPage} currentTrip={currentTrip} tripMembers={tripMembers} tripBills={tripBills} updateTripDetails={updateTripDetails} addMember={addMember} removeMember={removeMember} editMember={editMember} />;
+      case "edittrip":        return <EditTrip setPage={setPage} currentTrip={currentTrip} tripMembers={tripMembers} tripBills={tripBills} userProfile={userProfile} updateTripDetails={updateTripDetails} addMember={addMember} removeMember={removeMember} editMember={editMember} claimTripCreator={claimTripCreator} />;
       case "tripdetail":      return <TripDetail {...p} deleteExpense={deleteExpense} startEditExpense={startEditExpense} deleteTrip={deleteTrip} currentTrip={currentTrip} currentTripId={currentTripId} getInviteLink={getInviteLink} />;
       case "addexpense":      return <AddExpense {...p} addExpense={addExpense} addMember={addMember} removeMember={removeMember} editMember={editMember} />;
       case "scanreceipt":     return <ScanReceipt {...p} addExpense={addExpense} userProfile={userProfile} />;
