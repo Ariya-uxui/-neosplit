@@ -184,7 +184,7 @@ body {
 ═══════════════════════════════════════════ */
 .ns-screen {
   min-height: calc(100vh - 34px);
-  padding: 20px 18px 110px;
+  padding: 20px 18px calc(120px + env(safe-area-inset-bottom));
   background: var(--ns-bg);
   color: var(--ns-text);
   font-family: var(--ns-dm);
@@ -1024,8 +1024,8 @@ body {
 .white-panel.center { text-align: center; animation: pop 0.4s ease; }
 
 .toast {
-  position: absolute; left: 50%; bottom: 86px;
-  transform: translateX(-50%); z-index: 40;
+  position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom));
+  transform: translateX(-50%); z-index: 60;
   padding: 12px 18px; border-radius: 999px;
   font-size: 14px; font-weight: 700; color: var(--ns-on-accent);
   background: linear-gradient(135deg, var(--ns-g), var(--ns-g2));
@@ -1135,6 +1135,20 @@ body {
     display: none;
   }
 
+  /* Navbar goes full edge-to-edge here instead of the centered
+     max-width:430px column used for desktop preview, since on a real
+     phone the frame itself is already edge-to-edge. */
+  .ns-navbar {
+    left: 0;
+    right: 0;
+    transform: none;
+    max-width: 100%;
+  }
+
+  .toast {
+    max-width: calc(100% - 32px);
+  }
+
   .trip-summary-title { font-size: 23px; }
   .trip-bill-row { flex-direction: column; align-items: stretch; }
   .trip-bill-right { text-align: left; min-width: unset; }
@@ -1149,14 +1163,23 @@ body {
   display: flex;
   justify-content: space-around;
   align-items: center;
-  padding: 10px 8px 16px;
+  padding: 10px 8px calc(16px + env(safe-area-inset-bottom));
   background: rgba(8, 8, 7, 0.92);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border-top: 1px solid rgba(255, 255, 255, 0.07);
-  position: relative;
-  z-index: 10;
-  flex-shrink: 0;
+  /* Pinned to the screen itself instead of the page's normal scroll
+     flow — this is what stops it sliding up/down as a long screen is
+     scrolled. Centered to match .phone-shell's max-width so it lines
+     up with the "phone" column in desktop preview; the mobile media
+     query above widens it to full edge-to-edge on real phones. */
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 430px;
+  z-index: 50;
 }
 
 .ns-nav-item {
@@ -1193,42 +1216,42 @@ body {
   transition: transform 0.22s ease, opacity 0.22s ease;
   opacity: 0;
 }
- 
+
 .ns-nav-active::before {
   transform: translateX(-50%) scaleX(1);
   opacity: 1;
 }
- 
+
 .ns-nav-item:hover {
   color: rgba(18, 5, 5, 0.6);
   background: rgba(255, 255, 255, 0.04);
 }
- 
+
 .ns-nav-item:active {
   transform: scale(0.88);
 }
- 
+
 .ns-nav-active {
   color: #00FF85;
   background: rgba(0, 255, 133, 0.07);
 }
- 
+
 .ns-nav-active:hover {
   color: #00FF85;
   background: rgba(0, 255, 133, 0.1);
 }
- 
+
 .ns-nav-icon {
   font-size: 20px;
   line-height: 1;
   display: block;
   transition: transform 0.22s ease;
 }
- 
+
 .ns-nav-active .ns-nav-icon {
   transform: translateY(-1px) scale(1.1);
 }
- 
+
 .ns-nav-label {
   font-size: 9px;
   font-weight: 700;
@@ -1252,7 +1275,7 @@ body {
   font-size: 11px; font-weight: 700;
   letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--ns-muted); margin-bottom: 7px;
-  
+
 }
 
 .ns-input {
