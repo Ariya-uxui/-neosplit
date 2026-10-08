@@ -27,22 +27,100 @@ const resizeImage = (file) =>
     reader.readAsDataURL(file);
   });
 
-// Heuristic line-item parser — Thai receipts vary a lot, so this is
-// deliberately simple: any line ending in a number is treated as
-// "<name> <price>". Everything gets reviewed/editable/deletable next,
-// since OCR misreads (especially Thai text) are expected, not exceptional.
+// Lines that are header/footer noise, never an actual priced item — these
+// get skipped entirely so they can't be mistaken for a line item (this is
+// what previously caused the receipt's date/time to show up as a fake
+// 20-baht "item": nothing told the parser the date line wasn't one).
+const SKIP_LINE = [
+  /^ใบเสร็จ/i,              // "receipt (abbreviated)" header
+  /^วันที่/i,                // date line
+  /^ออเดอร์/i,              // order id
+  /^สาขา/i,                 // branch name
+  /^ทั้งหมด/i,              // grand total
+  /^ยอดรวม/i,
+  /^รวม(ทั้งหมด)?/i,
+  /^sub\s*total/i,
+  /^total\b/i,
+  /^vat\b/i,
+  /^ภาษี/i,
+  /^service\s*charge/i,
+  /^ค่าบริการ/i,
+  /^ต้องการใบเสร็จ/i,       // "ask staff for a full receipt" footer
+  /^\*+/,                  // starred footnotes
+  /^T\d+$/i,               // table/queue number, e.g. "T32"
+  /^[-–—]/,                // indented option lines under an item (Hot/Iced, Sweetness, …)
+];
+
+const isSkipLine = (line) => SKIP_LINE.some((re) => re.test(line));
+
+const PRICE_ONLY = /^([\d,]+\.\d{1,2}|\d{2,})$/;
+const PRICE_AT_END = /([\d,]+\.\d{1,2}|\d{2,})\s*$/;
+
+const cleanName = (raw) =>
+  raw.replace(/^x\s*\d+\s*/i, "").trim().replace(/[-–—:.]+$/, "").trim();
+
+// Heuristic line-item parser — Thai receipts vary a lot, so this stays
+// deliberately simple and everything stays reviewable/editable/deletable
+// next, since OCR misreads are expected, not exceptional. It tries two
+// layouts, since different receipt printers (and how Vision groups text
+// into lines) produce different raw-text shapes for what looks like the
+// same printed row:
+//  1. Name and price on the same text line ("Latte          70.00").
+//  2. Name and price split onto two separate lines/blocks — common when
+//     the item name and its price sit far apart on a thermal receipt and
+//     OCR reads them as separate chunks instead of one row. When this
+//     happens, names and prices still come out in the same top-to-bottom
+//     order, so they're paired up positionally.
 const parseReceiptText = (text) => {
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
-  const priceAtEnd = /([\d,]+\.\d{1,2}|\d{2,})\s*$/;
   const items = [];
+
+  // The grand total's own amount (when it's on the same line as its
+  // label) gets excluded from ever being mistaken for an item's price.
+  const usedTotal = (() => {
+    const totalLine = lines.find((l) => /^(ทั้งหมด|ยอดรวม|รวม(ทั้งหมด)?|total)\b/i.test(l));
+    const m = totalLine && totalLine.match(PRICE_AT_END);
+    return m ? Number(m[1].replace(/,/g, "")) : null;
+  })();
+
+  // Pass 1: same-line "name ... price".
+  const leftover = [];
   lines.forEach((line, i) => {
-    const match = line.match(priceAtEnd);
-    if (!match) return;
-    const amount = Number(match[1].replace(/,/g, ""));
-    const name = line.slice(0, match.index).trim().replace(/[-–—:.]+$/, "").trim();
-    if (!name || !amount || amount <= 0) return;
-    items.push({ id: `item-${i}-${Date.now()}`, name, amount });
+    if (isSkipLine(line)) return;
+
+    if (PRICE_ONLY.test(line)) {
+      const value = Number(line.replace(/,/g, ""));
+      if (value > 0 && value !== usedTotal) leftover.push({ i, type: "price", value });
+      return;
+    }
+
+    const match = line.match(PRICE_AT_END);
+    if (match) {
+      const amount = Number(match[1].replace(/,/g, ""));
+      const name = cleanName(line.slice(0, match.index));
+      if (name && amount > 0 && amount !== usedTotal) {
+        items.push({ id: `item-${i}-${Date.now()}`, name, amount });
+        return;
+      }
+    }
+
+    // No price on this line at all — a name-only candidate for Pass 2.
+    const name = cleanName(line);
+    if (name) leftover.push({ i, type: "name", value: name });
   });
+
+  // Pass 2: only runs if Pass 1 found nothing — meaning this receipt's
+  // names and prices are most likely split onto separate lines/blocks.
+  // Pair them up in the order they appeared.
+  if (items.length === 0) {
+    const names = leftover.filter((l) => l.type === "name");
+    const prices = leftover.filter((l) => l.type === "price");
+    const count = Math.min(names.length, prices.length);
+    for (let k = 0; k < count; k++) {
+      items.push({ id: `item-${names[k].i}-${Date.now()}`, name: names[k].value, amount: prices[k].value });
+    }
+  }
+
   return items;
 };
 
@@ -70,6 +148,10 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "OCR failed");
+      // Logged so the raw OCR text can be checked in the browser's
+      // console (DevTools → Console) if items still come out wrong —
+      // no need to dig through Vercel logs for this part anymore.
+      console.log("OCR raw text:", data.text);
       const parsed = parseReceiptText(data.text || "");
       if (parsed.length === 0) {
         setError("Couldn't find any line items — you can add them manually below.");
