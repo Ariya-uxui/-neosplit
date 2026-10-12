@@ -36,7 +36,7 @@ const BIAS_LIST = [
   { id: 19, name: "YangYang", emoji: "⚡", unit: "WayV" },
 ];
 
-export default function Profile({ setPage, userProfile, setUserProfile, theme = "neon", setTheme }) {
+export default function Profile({ setPage, userProfile, setUserProfile, renameProfile, theme = "neon", setTheme }) {
   const [name,         setName]         = useState(userProfile?.name         || DEFAULT_PROFILE.name);
   const [selectedBias, setSelectedBias] = useState(userProfile?.selectedBias || DEFAULT_PROFILE.selectedBias);
   const [profileImage, setProfileImage] = useState(userProfile?.profileImage || DEFAULT_PROFILE.profileImage);
@@ -101,8 +101,23 @@ export default function Profile({ setPage, userProfile, setUserProfile, theme = 
     localStorage.setItem("neosplitProfile", JSON.stringify(data));
   };
 
+  // Saving a changed name used to just update this local profile — any
+  // trip you'd already joined kept showing your OLD name everywhere
+  // (member list, bills, leaderboard), so it looked "unlinked". If the
+  // name actually changed, this routes through App.jsx's renameProfile,
+  // which cascades the rename across the currently active trip's
+  // members/bills/points via Firebase — and because that's realtime
+  // (onValue listeners), every screen already open updates itself with
+  // no refresh needed. Appearance/bias/QR fields still just save locally.
   const handleSave = () => {
-    const data = { name: name.trim() || DEFAULT_PROFILE.name, selectedBias, profileImage, qrImage };
+    const trimmed = name.trim() || DEFAULT_PROFILE.name;
+    const oldName = userProfile?.name;
+
+    if (renameProfile && oldName && trimmed !== oldName) {
+      renameProfile(trimmed);
+    }
+
+    const data = { name: trimmed, selectedBias, profileImage, qrImage };
     setUserProfile(data);
     localStorage.setItem("neosplitProfile", JSON.stringify(data));
     setToast("Profile saved ✓");
