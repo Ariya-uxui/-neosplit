@@ -33,22 +33,64 @@ const resizeImage = (file) =>
 // 20-baht "item": nothing told the parser the date line wasn't one).
 const SKIP_LINE = [
   /^ใบเสร็จ/i,              // "receipt (abbreviated)" header
+  /^ใบกำกับภาษี/i,          // tax invoice header
+  /^tax\s*inv/i,
   /^วันที่/i,                // date line
+  /^เวลา\s*:/i,             // time label
   /^ออเดอร์/i,              // order id
+  /^เลขที่/i,                // "No.:" reference number lines
   /^สาขา/i,                 // branch name
+  /^คิว\s*:/i,              // queue number
   /^ทั้งหมด/i,              // grand total
   /^ยอดรวม/i,
-  /^รวม(ทั้งหมด)?/i,
+  /^รวม(ทั้งหมด)?\b/i,
   /^sub\s*total/i,
   /^total\b/i,
   /^vat\b/i,
+  /^vatable\b/i,            // pre-VAT subtotal line
   /^ภาษี/i,
   /^service\s*charge/i,
   /^ค่าบริการ/i,
+  /^ส่วนลด/i,                // discount
+  /^discount\b/i,
   /^ต้องการใบเสร็จ/i,       // "ask staff for a full receipt" footer
   /^\*+/,                  // starred footnotes
   /^T\d+$/i,               // table/queue number, e.g. "T32"
   /^[-–—]/,                // indented option lines under an item (Hot/Iced, Sweetness, …)
+  // Payment / change
+  /^(k\s*plus|qr[-\s]?kplus)/i,
+  /^change\b/i,
+  /^เงินทอน/i,
+  /^cash\b/i,
+  /^card\b/i,
+  /^amount\b/i,             // "Amount Ex. VAT", "Amount VAT Included", …
+  /^จำนวนเงิน/i,
+  /^จำนวนทั้งหมด/i,          // "total pieces" line
+  // Membership / loyalty points — never priced items
+  /^member\b/i,
+  /^(previous\s+)?point\b/i,
+  // Receipt metadata / staff / contact info
+  /^staff\b/i,
+  /^พนักงาน/i,
+  /^cashier\b/i,
+  /^เครื่อง/i,
+  /^pos\s*no/i,
+  /^ref\s*id/i,
+  /^register\s*no/i,
+  /^tel\s*:/i,
+  /^โทรศัพท์/i,
+  /^tax\s*id/i,
+  /^เลขที่ผู้เสียภาษี/i,
+  /^ประเภท\s*:/i,            // "Type: Takeaway" line
+  /^sale\s*type/i,
+  /^customer\s*:/i,
+  /^ลูกค้า/i,
+  // Footer courtesies
+  /^thank\s*you/i,
+  /^for\s*inquiries/i,
+  /^please\s*call/i,
+  /^สแกน\s*qr/i,
+  /^scan\s*qr/i,
 ];
 
 const isSkipLine = (line) => SKIP_LINE.some((re) => re.test(line));
