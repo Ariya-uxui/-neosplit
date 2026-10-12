@@ -91,28 +91,54 @@ const SKIP_LINE = [
   /^please\s*call/i,
   /^สแกน\s*qr/i,
   /^scan\s*qr/i,
+  // Bare date/time stamp lines with no label at all (order-open /
+  // order-close timestamps on bar & restaurant tabs), e.g. "10-10-2569
+  // 23:38" — without this, the trailing minutes/seconds can get mistaken
+  // for a price by Pass 1 below.
+  /^\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/,
 ];
 
 const isSkipLine = (line) => SKIP_LINE.some((re) => re.test(line));
 
-const PRICE_ONLY = /^([\d,]+\.\d{1,2}|\d{2,})$/;
-const PRICE_AT_END = /([\d,]+\.\d{1,2}|\d{2,})\s*$/;
+// A line with no letters at all (Thai or Latin) is metadata by definition
+// — a tax ID, a queue number, a bare quantity, a timestamp — never an
+// item's name. Real item names always have letters in every sample
+// receipt seen so far, so this is what keeps reference numbers from
+// being read as "items" with no name.
+const hasLetter = (s) => /[a-zA-Zก-๙]/.test(s);
+
+// A real item price always prints with cents (e.g. "70.00", "1,800.00")
+// on every receipt format seen so far — requiring the decimal point is
+// what tells a genuine price apart from a bare reference number (a tax
+// ID, a queue number, a timestamp fragment, an item quantity), which are
+// usually several plain digits with no decimal at all.
+const PRICE_ONLY = /^[\d,]+\.\d{1,2}$/;
+const PRICE_AT_END = /([\d,]+\.\d{1,2})\s*$/;
+// An item's quantity column — a short bare integer, e.g. "5", "12".
+const QTY_ONLY = /^\d{1,3}$/;
 
 const cleanName = (raw) =>
   raw.replace(/^x\s*\d+\s*/i, "").trim().replace(/[-–—:.]+$/, "").trim();
 
 // Heuristic line-item parser — Thai receipts vary a lot, so this stays
 // deliberately simple and everything stays reviewable/editable/deletable
-// next, since OCR misreads are expected, not exceptional. It tries two
-// layouts, since different receipt printers (and how Vision groups text
-// into lines) produce different raw-text shapes for what looks like the
-// same printed row:
+// next, since OCR misreads are expected, not exceptional. It tries three
+// layouts in order, since different receipt printers (and how Vision
+// groups text into lines) produce different raw-text shapes for what
+// looks like the same printed row — the first one that finds anything
+// wins, since a given receipt only ever uses one of these:
 //  1. Name and price on the same text line ("Latte          70.00").
-//  2. Name and price split onto two separate lines/blocks — common when
-//     the item name and its price sit far apart on a thermal receipt and
-//     OCR reads them as separate chunks instead of one row. When this
-//     happens, names and prices still come out in the same top-to-bottom
-//     order, so they're paired up positionally.
+//  2. Name, quantity, unit price and line total each on their own line,
+//     four lines per item ("VODKA" / "5" / "360.00" / "1,800.00") — common
+//     on bar/restaurant tabs with a qty & unit-price column. The line
+//     total (not the unit price) is used as the item's price, per
+//     "ราคาคือราคารวมทั้งหมด". A wrapped second half of a long name
+//     sometimes lands as its own line right after the price columns
+//     instead of before them (e.g. "GOOSE)" after "VODKA (GREY"'s
+//     prices) — that gets folded back onto the name it belongs to.
+//  3. Anything left over — name-only and price-only lines paired up
+//     positionally, in the order they appeared. Last resort, for
+//     receipts that don't cleanly match either layout above.
 const parseReceiptText = (text) => {
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
   const items = [];
@@ -126,40 +152,67 @@ const parseReceiptText = (text) => {
   })();
 
   // Pass 1: same-line "name ... price".
-  const leftover = [];
   lines.forEach((line, i) => {
     if (isSkipLine(line)) return;
-
-    if (PRICE_ONLY.test(line)) {
-      const value = Number(line.replace(/,/g, ""));
-      if (value > 0 && value !== usedTotal) leftover.push({ i, type: "price", value });
-      return;
-    }
-
     const match = line.match(PRICE_AT_END);
-    if (match) {
-      const amount = Number(match[1].replace(/,/g, ""));
-      const name = cleanName(line.slice(0, match.index));
-      if (name && amount > 0 && amount !== usedTotal) {
-        items.push({ id: `item-${i}-${Date.now()}`, name, amount });
-        return;
-      }
+    if (!match) return;
+    const amount = Number(match[1].replace(/,/g, ""));
+    const name = cleanName(line.slice(0, match.index));
+    if (name && hasLetter(name) && amount > 0 && amount !== usedTotal) {
+      items.push({ id: `item-${i}-${Date.now()}`, name, amount });
     }
-
-    // No price on this line at all — a name-only candidate for Pass 2.
-    const name = cleanName(line);
-    if (name) leftover.push({ i, type: "name", value: name });
   });
 
-  // Pass 2: only runs if Pass 1 found nothing — meaning this receipt's
-  // names and prices are most likely split onto separate lines/blocks.
-  // Pair them up in the order they appeared.
+  // Pass 2: structured "name / qty / unit price / line total" blocks.
   if (items.length === 0) {
-    const names = leftover.filter((l) => l.type === "name");
-    const prices = leftover.filter((l) => l.type === "price");
-    const count = Math.min(names.length, prices.length);
+    const tryBlock = (start) => {
+      const nameLine = lines[start];
+      if (!nameLine || isSkipLine(nameLine) || !hasLetter(nameLine) || PRICE_ONLY.test(nameLine)) return null;
+      const qty = lines[start + 1];
+      const unit = lines[start + 2];
+      const total = lines[start + 3];
+      if (!qty || !unit || !total) return null;
+      if (!QTY_ONLY.test(qty) || !PRICE_ONLY.test(unit) || !PRICE_ONLY.test(total)) return null;
+      return { name: cleanName(nameLine), amount: Number(total.replace(/,/g, "")) };
+    };
+
+    let i = 0;
+    while (i < lines.length) {
+      const block = tryBlock(i);
+      if (!block) {
+        i += 1;
+        continue;
+      }
+      items.push({ id: `item-${i}-${Date.now()}`, ...block });
+      i += 4;
+
+      const next = lines[i];
+      if (next && !isSkipLine(next) && hasLetter(next) && !PRICE_ONLY.test(next) && !tryBlock(i)) {
+        items[items.length - 1].name = cleanName(`${items[items.length - 1].name} ${next}`);
+        i += 1;
+      }
+    }
+  }
+
+  // Pass 3: last resort — pair up leftover name-only and price-only
+  // lines positionally, in the order they appeared.
+  if (items.length === 0) {
+    const leftoverNames = [];
+    const leftoverPrices = [];
+    lines.forEach((line, i) => {
+      if (isSkipLine(line)) return;
+      if (PRICE_ONLY.test(line)) {
+        const value = Number(line.replace(/,/g, ""));
+        if (value > 0 && value !== usedTotal) leftoverPrices.push({ i, value });
+        return;
+      }
+      if (!hasLetter(line)) return; // bare numbers that aren't a clean price — never a name
+      const name = cleanName(line);
+      if (name) leftoverNames.push({ i, value: name });
+    });
+    const count = Math.min(leftoverNames.length, leftoverPrices.length);
     for (let k = 0; k < count; k++) {
-      items.push({ id: `item-${names[k].i}-${Date.now()}`, name: names[k].value, amount: prices[k].value });
+      items.push({ id: `item-${leftoverNames[k].i}-${Date.now()}`, name: leftoverNames[k].value, amount: leftoverPrices[k].value });
     }
   }
 
