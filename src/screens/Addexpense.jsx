@@ -1,6 +1,18 @@
 import React, { useState } from "react";
 import "../App.css";
- 
+
+// The bill is stored with its date as "DD/MM/YYYY" (en-GB) to match what's
+// already shown elsewhere (Bill Detail, bill lists, etc.), but the native
+// <input type="date"> — which gives a tap-to-scroll date picker on phones —
+// only speaks "YYYY-MM-DD". These convert between the two so the stored
+// format never has to change.
+const todayInput = () => new Date().toISOString().slice(0, 10);
+const toDisplayDate = (iso) => {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+};
+
 const CATEGORIES = [
   { id: "Food", icon: "🍜" },
   { id: "Ticket", icon: "🎫" },
@@ -9,19 +21,20 @@ const CATEGORIES = [
   { id: "Hotel", icon: "🏨" },
   { id: "Other", icon: "💸" },
 ];
- 
+
 function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMember, editMember }) {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [paidBy, setPaidBy] = useState(tripMembers[0] || "");
   const [category, setCategory] = useState("Food");
+  const [date, setDate] = useState(todayInput());
   const [sharedBy, setSharedBy] = useState([...tripMembers]);
   const [newMemberName, setNewMemberName] = useState("");
   const [showAddMember, setShowAddMember] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
   const [editValue, setEditValue] = useState("");
   const [editError, setEditError] = useState("");
- 
+
   const handleAddMember = () => {
     const trimmed = newMemberName.trim();
     if (!trimmed) return;
@@ -31,7 +44,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
     setNewMemberName("");
     setShowAddMember(false);
   };
- 
+
   const handleRemoveMember = (member) => {
     if (removeMember) removeMember(member);
     setSharedBy((prev) => prev.filter((m) => m !== member));
@@ -80,12 +93,12 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
     setEditValue("");
     setEditError("");
   };
- 
+
   const toggleMember = (member) =>
     setSharedBy((prev) =>
       prev.includes(member) ? prev.filter((m) => m !== member) : [...prev, member]
     );
- 
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!name.trim() || !amount || sharedBy.length === 0) return;
@@ -97,16 +110,16 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
       category,
       sharedBy,
       status: "Pending",
-      date: new Date().toLocaleDateString("en-GB"),
+      date: toDisplayDate(date) || new Date().toLocaleDateString("en-GB"),
     });
     setPage("receipt");
   };
- 
+
   const perPerson =
     amount && sharedBy.length > 0
       ? (Number(amount) / sharedBy.length).toFixed(2)
       : null;
- 
+
   return (
     <div className="ns-screen">
       <div className="ns-page-header">
@@ -131,10 +144,10 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
       >
         📷 Scan Receipt instead
       </button>
- 
+
       <form onSubmit={handleSubmit}>
         <div className="ns-card">
- 
+
           {/* Expense Name */}
           <div className="ns-input-group">
             <label className="ns-input-label">Expense Name</label>
@@ -145,7 +158,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
               placeholder="e.g. Dinner, Taxi, Tickets"
             />
           </div>
- 
+
           {/* Amount */}
           <div className="ns-input-group">
             <label className="ns-input-label">Amount (THB)</label>
@@ -157,7 +170,20 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
               placeholder="0"
             />
           </div>
- 
+
+          {/* Date — defaults to today; tapping it opens the phone's native
+              scroll-wheel date picker to pick a different day */}
+          <div className="ns-input-group">
+            <label className="ns-input-label">Date</label>
+            <input
+              className="ns-input"
+              type="date"
+              value={date}
+              max={todayInput()}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </div>
+
           {/* Paid By + Manage Members */}
           <div className="ns-input-group">
             <label className="ns-input-label">Paid By</label>
@@ -172,7 +198,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
                 </option>
               ))}
             </select>
- 
+
             <div style={{ marginTop: 10 }}>
               <div
                 style={{
@@ -186,7 +212,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
               >
                 Manage Members
               </div>
- 
+
               <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 8 }}>
                 {tripMembers.map((m) =>
                   editingMember === m ? (
@@ -308,7 +334,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
                     </div>
                   )
                 )}
- 
+
                 <button
                   type="button"
                   onClick={() => setShowAddMember((v) => !v)}
@@ -326,7 +352,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
                   + Add Name
                 </button>
               </div>
- 
+
               {showAddMember && (
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <input
@@ -370,7 +396,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
               )}
             </div>
           </div>
- 
+
           {/* Category */}
           <div className="ns-input-group">
             <label className="ns-input-label">Category</label>
@@ -399,7 +425,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
               ))}
             </div>
           </div>
- 
+
           {/* Shared By */}
           <div className="ns-input-group" style={{ marginBottom: 0 }}>
             <label className="ns-input-label">
@@ -429,7 +455,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
             </div>
           </div>
         </div>
- 
+
         {/* Per person preview */}
         {perPerson && (
           <div
@@ -457,7 +483,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
             </span>
           </div>
         )}
- 
+
         <button type="submit" className="ns-btn ns-btn-primary">
           Save Bill ✓
         </button>
@@ -473,5 +499,5 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
     </div>
   );
 }
- 
+
 export default AddExpense;

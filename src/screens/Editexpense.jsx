@@ -1,6 +1,24 @@
 import React, { useEffect, useState } from "react";
 import "../App.css";
- 
+
+// The bill is stored with its date as "DD/MM/YYYY" (en-GB) to match what's
+// already shown elsewhere (Bill Detail, bill lists, etc.), but the native
+// <input type="date"> — which gives a tap-to-scroll date picker on phones —
+// only speaks "YYYY-MM-DD". These convert between the two so the stored
+// format never has to change.
+const todayInput = () => new Date().toISOString().slice(0, 10);
+const toInputDate = (enGB) => {
+  if (!enGB) return "";
+  const [d, m, y] = enGB.split("/");
+  if (!d || !m || !y) return "";
+  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+};
+const toDisplayDate = (iso) => {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+};
+
 const CATEGORIES = [
   { id: "Food",      icon: "🍜" },
   { id: "Ticket",    icon: "🎫" },
@@ -9,15 +27,16 @@ const CATEGORIES = [
   { id: "Hotel",     icon: "🏨" },
   { id: "Other",     icon: "💸" },
 ];
- 
+
 function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] }) {
   const [expenseName, setExpenseName] = useState("");
   const [amount, setAmount]           = useState("");
   const [paidBy, setPaidBy]           = useState("");
   const [category, setCategory]       = useState("Food");
+  const [date, setDate]               = useState(todayInput());
   const [sharedBy, setSharedBy]       = useState([]);
   const [errors, setErrors]           = useState({});
- 
+
   useEffect(() => {
     if (editingExpense) {
       const initialSharedBy =
@@ -28,15 +47,16 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
       setAmount(editingExpense.amount || "");
       setPaidBy(editingExpense.paidBy || "");
       setCategory(editingExpense.category || "Food");
+      setDate(toInputDate(editingExpense.date) || todayInput());
       setSharedBy(initialSharedBy);
     }
   }, [editingExpense, tripMembers]);
- 
+
   const toggleMember = (member) =>
     setSharedBy((prev) =>
       prev.includes(member) ? prev.filter((m) => m !== member) : [...prev, member]
     );
- 
+
   const validate = () => {
     const e = {};
     if (!expenseName.trim())   e.expenseName = "Please enter expense name";
@@ -46,12 +66,12 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
     setErrors(e);
     return Object.keys(e).length === 0;
   };
- 
+
   const perPerson =
     Number(amount) > 0 && sharedBy.length > 0
       ? (Number(amount) / sharedBy.length).toFixed(2)
       : null;
- 
+
   const handleSave = () => {
     if (!editingExpense || !validate()) return;
     updateExpense({
@@ -61,22 +81,23 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
       paidBy,
       pax: sharedBy.length,
       category,
+      date: toDisplayDate(date) || editingExpense.date,
       sharedBy,
     });
   };
- 
+
   return (
     <div className="ns-screen">
- 
+
       {/* Header */}
       <div className="ns-page-header">
         <button className="ns-back-btn" onClick={() => setPage("tripdetail")}>‹</button>
         <span className="ns-title">Edit Expense</span>
         <div style={{ width: 36 }} />
       </div>
- 
+
       <div className="ns-card">
- 
+
         {/* Expense Name */}
         <div className="ns-input-group">
           <label className="ns-input-label">Expense Name</label>
@@ -90,7 +111,7 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
             <div style={{ fontSize: 11, color: "var(--ns-r)", marginTop: 4 }}>{errors.expenseName}</div>
           )}
         </div>
- 
+
         {/* Amount */}
         <div className="ns-input-group">
           <label className="ns-input-label">Amount (THB)</label>
@@ -105,7 +126,21 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
             <div style={{ fontSize: 11, color: "var(--ns-r)", marginTop: 4 }}>{errors.amount}</div>
           )}
         </div>
- 
+
+        {/* Date — defaults to the bill's existing date (or today if it
+            doesn't have one); tapping it opens the phone's native
+            scroll-wheel date picker to pick a different day */}
+        <div className="ns-input-group">
+          <label className="ns-input-label">Date</label>
+          <input
+            className="ns-input"
+            type="date"
+            value={date}
+            max={todayInput()}
+            onChange={(e) => setDate(e.target.value)}
+          />
+        </div>
+
         {/* Paid By */}
         <div className="ns-input-group">
           <label className="ns-input-label">Paid By</label>
@@ -119,7 +154,7 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
             <div style={{ fontSize: 11, color: "var(--ns-r)", marginTop: 4 }}>{errors.paidBy}</div>
           )}
         </div>
- 
+
         {/* Category */}
         <div className="ns-input-group">
           <label className="ns-input-label">Category</label>
@@ -131,8 +166,8 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
                 onClick={() => setCategory(c.id)}
                 style={{
                   padding: "7px 14px", borderRadius: 100,
-                  border: `1px solid ${category === c.id ? "color-mix(in srgb, var(--ns-g) 40%, transparent)" : "var(--ns-border)"}`,
-                  background: category === c.id ? "color-mix(in srgb, var(--ns-g) 10%, transparent)" : "var(--ns-card2)",
+                  border: `1px solid ${category === c.id ? "rgba(0,255,133,0.4)" : "var(--ns-border)"}`,
+                  background: category === c.id ? "rgba(0,255,133,0.1)" : "var(--ns-card2)",
                   color: category === c.id ? "var(--ns-g)" : "var(--ns-text2)",
                   fontSize: 12, fontWeight: 600, cursor: "pointer",
                   display: "flex", alignItems: "center", gap: 5,
@@ -143,7 +178,7 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
             ))}
           </div>
         </div>
- 
+
         {/* Shared By */}
         <div className="ns-input-group" style={{ marginBottom: 0 }}>
           <label className="ns-input-label">Shared By ({sharedBy.length} selected)</label>
@@ -155,8 +190,8 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
                 onClick={() => toggleMember(m)}
                 style={{
                   padding: "7px 14px", borderRadius: 100,
-                  border: `1px solid ${sharedBy.includes(m) ? "color-mix(in srgb, var(--ns-g) 40%, transparent)" : "var(--ns-border)"}`,
-                  background: sharedBy.includes(m) ? "color-mix(in srgb, var(--ns-g) 10%, transparent)" : "var(--ns-card2)",
+                  border: `1px solid ${sharedBy.includes(m) ? "rgba(0,255,133,0.4)" : "var(--ns-border)"}`,
+                  background: sharedBy.includes(m) ? "rgba(0,255,133,0.1)" : "var(--ns-card2)",
                   color: sharedBy.includes(m) ? "var(--ns-g)" : "var(--ns-text2)",
                   fontSize: 12, fontWeight: 600, cursor: "pointer",
                 }}
@@ -170,13 +205,13 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
           )}
         </div>
       </div>
- 
+
       {/* Per person preview */}
       {perPerson && (
         <div style={{
           padding: "14px 18px", marginBottom: 14,
-          background: "color-mix(in srgb, var(--ns-g) 6%, transparent)",
-          border: "1px solid color-mix(in srgb, var(--ns-g) 15%, transparent)",
+          background: "rgba(0,255,133,0.06)",
+          border: "1px solid rgba(0,255,133,0.15)",
           borderRadius: 16, display: "flex",
           justifyContent: "space-between", alignItems: "center",
         }}>
@@ -186,7 +221,7 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
           </span>
         </div>
       )}
- 
+
       <button className="ns-btn ns-btn-primary" onClick={handleSave}>
         Update Expense ✓
       </button>
@@ -200,5 +235,5 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
     </div>
   );
 }
- 
+
 export default EditExpense;
