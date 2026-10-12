@@ -269,11 +269,15 @@ function Leaderboard({ setPage, authReady, currentTripId, currentTrip, userProfi
                   }}>
                     {user.name.charAt(0).toUpperCase()}
                   </div>
+                  {/* Long names (e.g. "NongTaeyoung") now wrap onto a
+                      second line instead of being clipped to "NongTaey…" */}
                   <div style={{
                     fontSize: 11, fontWeight: 700,
                     color: user.isMe ? "var(--ns-g)" : "var(--ns-text2)",
-                    textAlign: "center", maxWidth: 70,
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    textAlign: "center", maxWidth: 82,
+                    overflow: "hidden", display: "-webkit-box",
+                    WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+                    lineHeight: 1.25, wordBreak: "break-word",
                   }}>
                     {user.isMe ? "You" : user.name}
                   </div>

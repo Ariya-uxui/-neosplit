@@ -40,7 +40,7 @@
   --ns-card2:   #1a1a18;
   --ns-border:  rgba(255, 255, 255, 0.07);
   --ns-border2: rgba(255, 255, 255, 0.12);
-  --ns-muted:   rgba(255, 255, 255, 0.55);
+  --ns-muted:   rgba(255, 255, 255, 0.68);
   --ns-text:    #F0EFE8;
   --ns-text2:   rgba(240, 239, 232, 0.7);
   --ns-syne:    'Syne', sans-serif;
@@ -67,7 +67,7 @@
   --ns-card2:   #f2f2f2;
   --ns-border:  rgba(0, 0, 0, 0.08);
   --ns-border2: rgba(0, 0, 0, 0.15);
-  --ns-muted:   rgba(0, 0, 0, 0.60);
+  --ns-muted:   rgba(0, 0, 0, 0.68);
   --ns-text:    #111111;
   --ns-text2:   rgba(17, 17, 17, 0.7);
   --ns-on-accent: #ffffff;
@@ -85,7 +85,7 @@
   --ns-card2:   #1c1c1c;
   --ns-border:  rgba(255, 255, 255, 0.08);
   --ns-border2: rgba(255, 255, 255, 0.15);
-  --ns-muted:   rgba(255, 255, 255, 0.58);
+  --ns-muted:   rgba(255, 255, 255, 0.70);
   --ns-text:    #ffffff;
   --ns-text2:   rgba(255, 255, 255, 0.72);
   --ns-on-accent: #000000;
@@ -575,7 +575,7 @@ body {
 }
 
 .dashboard-bill-title { font-size: 1.08rem; font-weight: 800; }
-.dashboard-bill-meta { font-size: 0.92rem; color: #4b5563; margin-bottom: 4px; }
+.dashboard-bill-meta { font-size: 0.92rem; color: var(--text-soft); margin-bottom: 4px; }
 
 /* ═══════════════════════════════════════════
    NS HOME
@@ -975,7 +975,7 @@ body {
 ═══════════════════════════════════════════ */
 .history-summary-row { display: flex; gap: 10px; margin-bottom: 16px; }
 .history-summary-chip { flex: 1; background: white; border-radius: 16px; padding: 12px 10px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-.history-chip-label { display: block; font-size: 11px; color: #888; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+.history-chip-label { display: block; font-size: 11px; color: #6e6e6e; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
 .history-chip-value { display: block; font-size: 22px; font-weight: 900; color: #111; }
 .history-chip-value.pending-val { color: #e5a000; }
 .history-chip-value.settled-val { color: #19c45e; }
@@ -989,10 +989,10 @@ body {
 .history-bill-left { display: flex; align-items: flex-start; gap: 10px; }
 .history-bill-icon { font-size: 22px; width: 40px; height: 40px; background: rgba(0,0,0,0.05); border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .history-bill-name { font-size: 15px; font-weight: 700; color: #111; margin-bottom: 3px; }
-.history-bill-meta { font-size: 12px; color: #888; }
+.history-bill-meta { font-size: 12px; color: #6e6e6e; }
 .history-bill-right{ text-align: right; flex-shrink: 0; }
 .history-bill-amount{ font-size: 15px; font-weight: 800; color: #111; margin-bottom: 5px; }
-.history-bill-footer{ display: flex; gap: 6px; align-items: center; font-size: 12px; color: #888; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.06); flex-wrap: wrap; }
+.history-bill-footer{ display: flex; gap: 6px; align-items: center; font-size: 12px; color: #6e6e6e; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.06); flex-wrap: wrap; }
 
 .history-status-badge,
 .bill-detail-status-badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 100px; }
@@ -1009,7 +1009,7 @@ body {
 
 .detail-info-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid rgba(0,0,0,0.06); gap: 12px; }
 .detail-info-row:last-child { border-bottom: none; padding-bottom: 0; }
-.detail-info-label { font-size: 13px; color: #888; font-weight: 500; flex-shrink: 0; }
+.detail-info-label { font-size: 13px; color: #6e6e6e; font-weight: 500; flex-shrink: 0; }
 .detail-info-value { font-size: 13px; font-weight: 700; color: #111; text-align: right; }
 .detail-per-person { color: #19c45e; font-size: 15px; }
 .detail-members-row { align-items: flex-start; }
@@ -1197,7 +1197,7 @@ body {
   padding: 6px 4px 4px;
   border-radius: 14px;
   transition: all 0.22s ease;
-  color: rgba(255, 255, 255, 0.32);
+  color: rgba(255, 255, 255, 0.5);
   font-family: 'DM Sans', sans-serif;
   position: relative;
 }
@@ -1223,7 +1223,7 @@ body {
 }
 
 .ns-nav-item:hover {
-  color: rgba(18, 5, 5, 0.6);
+  color: rgba(255, 255, 255, 0.55);
   background: rgba(255, 255, 255, 0.04);
 }
 

@@ -1,5 +1,5 @@
 import "./App.css";
-import React, { useState, useEffect, useReducer } from "react";
+import React, { useState, useEffect, useReducer, useRef } from "react";
 import Home from "./screens/Home";
 import CreateTrip from "./screens/Createtrip";
 import EditTrip from "./screens/EditTrip";
@@ -46,6 +46,28 @@ const normalizeBill = (bill) => {
     status: bill.status || "Pending",
     date: bill.date || "Recently added",
   };
+};
+
+// Screens reachable directly from the bottom tab bar. Switching between
+// these resets the in-app back-stack to just that one screen (see setPage
+// below) — otherwise hopping Home → Bills → Split → Profile → Ranks would
+// pile up a 5-deep history that Back has to climb back down through.
+const TAB_ROOTS = new Set(["home", "receipt", "splitbill", "leaderboard", "trophy", "profile"]);
+
+// Which screen to restore on load. The URL hash covers a normal browser
+// reload, but an installed PWA reopened from its home-screen icon always
+// launches at manifest.json's fixed start_url — no hash at all — which is
+// exactly what made reopening the app always land back on Home/Splash
+// even though the trip itself was never actually gone (currentTripId was
+// always fine in localStorage; only the *page* wasn't). This falls back
+// to the page we last wrote to localStorage whenever there's no hash.
+const getRestoredPage = () => {
+  if (window.location.hash) return window.location.hash.slice(1);
+  try {
+    return localStorage.getItem("lastPage") || "";
+  } catch {
+    return "";
+  }
 };
 
 // ── UI reducer ──
@@ -120,8 +142,8 @@ function App() {
   // Reload should land back on the screen you were on, not always
   // splash — restore the initial page from the URL hash if one exists.
   const [ui, dispatchUi] = useReducer(uiReducer, initialUiState, (init) => {
-    const hashPage = window.location.hash ? window.location.hash.slice(1) : "";
-    return hashPage ? { ...init, page: hashPage } : init;
+    const restoredPage = getRestoredPage();
+    return restoredPage ? { ...init, page: restoredPage } : init;
   });
   const { page, toast, editingExpense, selectedBill, selectedRedeem, showLanding } = ui;
 
@@ -130,6 +152,13 @@ function App() {
 
   const [userPoints, setUserPoints] = useState(0);
   const [tripPoints, setTripPoints] = useState(0);
+  // Custom Split's per-person target amounts for the trip's current
+  // pending bills — set by Splitbill.jsx's Custom mode, consumed by
+  // Settlement.jsx to compute real balances/transfers instead of its
+  // default equal-per-bill split. Cleared whenever it would go stale:
+  // after settling, or when the pending-bill set it was built against
+  // no longer matches (Settlement checks the total itself).
+  const [customSplit, setCustomSplit] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [theme, setThemeState] = useState(() => {
     try {
@@ -146,16 +175,70 @@ function App() {
     } catch {}
   };
 
-  // Every navigation pushes a real browser history entry (via the URL
-  // hash) — this is what makes the Back button move *within* the app
-  // instead of leaving it, and what lets a reload restore the right
-  // screen (see the lazy useReducer init above).
+  // ── In-app navigation stack + Back button handling ──
+  // We keep our OWN list of screens visited (independent of how many
+  // real browser history entries exist) and guard the browser's Back
+  // button with exactly ONE pushed history entry. Each Back press is
+  // caught by that guard, pops one screen off our stack, then re-arms
+  // the guard so the *next* Back press is caught too — so Back always
+  // walks backwards through the screens you actually visited (Edit →
+  // Bill → Trip → Home), however many steps deep, using only one real
+  // history entry the whole time. Only once the stack is back down to
+  // a single screen (a tab's root — nothing left to undo) do we skip
+  // re-arming, so that Back finally exits the app, same as pressing it
+  // on a fresh tab would feel on a native app.
+  const navStackRef = useRef([getRestoredPage() || "splash"]);
+
+  const armGuard = () => {
+    window.history.pushState(
+      { guard: true },
+      "",
+      window.location.pathname + window.location.search + window.location.hash
+    );
+  };
+
+  useEffect(() => {
+    armGuard();
+
+    const handlePopState = () => {
+      const stack = navStackRef.current;
+      if (stack.length > 1) {
+        const newStack = stack.slice(0, -1);
+        navStackRef.current = newStack;
+        const prevPage = newStack[newStack.length - 1];
+        dispatchUi({ type: "NAVIGATE", page: prevPage });
+        window.history.replaceState({ guard: true }, "", `#${prevPage}`);
+        try { localStorage.setItem("lastPage", prevPage); } catch {}
+        armGuard(); // catch the next Back press too
+      }
+      // else: already at a tab root with nothing left to pop — let this
+      // Back press actually leave the app instead of re-arming the guard.
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Tapping a bottom-tab icon (Home/Bills/Split/Ranks/Profile) resets the
+  // stack to just that screen, so switching tabs never piles up history;
+  // anything else (opening a bill, editing an expense, etc.) pushes onto
+  // whatever screen you were already on, so Back can unwind it in order.
   const setPage = (p) => {
-    dispatchUi({ type: "NAVIGATE", page: p });
-    const hash = `#${p}`;
-    if (window.location.hash !== hash) {
-      window.history.pushState({ page: p }, "", hash);
+    const stack = navStackRef.current;
+    if (TAB_ROOTS.has(p)) {
+      navStackRef.current = [p];
+    } else if (stack[stack.length - 1] !== p) {
+      navStackRef.current = [...stack, p];
     }
+    dispatchUi({ type: "NAVIGATE", page: p });
+    // Keep the URL hash in sync (covers a normal browser reload) without
+    // adding a separate browser history entry — the guard above is the
+    // only one. Also mirrored to localStorage for when there's no hash
+    // to read at all (an installed PWA reopened from its home-screen
+    // icon always starts at the fixed start_url, no hash included).
+    window.history.replaceState({ guard: true }, "", `#${p}`);
+    try { localStorage.setItem("lastPage", p); } catch {}
   };
   const setToast = (message) => dispatchUi({ type: "SET_TOAST", message });
   const setSelectedBill = (bill) => dispatchUi({ type: "SET_SELECTED_BILL", bill });
@@ -200,25 +283,6 @@ function App() {
     });
     setToast(`Saved "${name.trim()}" as a team ✓`);
   };
-
-  // ── Back/Forward buttons navigate within the app ──
-  // Without this, the browser (or Android's hardware Back button, once
-  // wrapped as a native app) would just leave NeoSplit entirely instead
-  // of stepping back to the previous screen.
-  useEffect(() => {
-    const handlePopState = (e) => {
-      const p = e.state?.page || (window.location.hash ? window.location.hash.slice(1) : "home");
-      dispatchUi({ type: "NAVIGATE", page: p });
-    };
-    window.addEventListener("popstate", handlePopState);
-
-    // Normalize the very first history entry to match whatever page we
-    // actually started on (replace, not push — this isn't a new visit).
-    const startPage = window.location.hash ? window.location.hash.slice(1) : "splash";
-    window.history.replaceState({ page: startPage }, "", `#${startPage}`);
-
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
 
   // ── Check invite link on load ──
   useEffect(() => {
@@ -335,16 +399,16 @@ function App() {
   // ever knocking someone down the leaderboard.
   const addPoints = (pts) => {
     setUserPoints((prev) => {
-      const updated = prev + pts;
+      const updated = Math.max(0, prev + pts);
       set(ref(db, "userPoints"), updated);
       return updated;
     });
     if (currentTripId && userProfile?.name) {
       runTransaction(ref(db, `trips/${currentTripId}/memberPoints/${userProfile.name}`), (current) => {
-        return (current || 0) + pts;
+        return Math.max(0, (current || 0) + pts);
       });
       runTransaction(ref(db, `trips/${currentTripId}/memberLifetimePoints/${userProfile.name}`), (current) => {
-        return (current || 0) + pts;
+        return Math.max(0, (current || 0) + pts);
       });
     }
   };
@@ -487,6 +551,9 @@ function App() {
 
   const deleteExpense = (id) => {
     if (!currentTripId) return;
+    // Reverses the +2 pts that bill earned when it was added — without
+    // this, add → delete → add → delete farms free points forever.
+    addPoints(-2);
     remove(ref(db, `trips/${currentTripId}/bills/${id}`));
     setToast("Expense deleted");
   };
@@ -504,12 +571,24 @@ function App() {
     setPage("tripdetail");
   };
 
-  const settleAllBills = () => {
+  // `billIds` scopes which bills actually get marked Finished — without
+  // it, pressing "Complete Split" while looking at just ONE bill (from
+  // Bill Detail, or a "Select Bills" split) used to mark EVERY pending
+  // bill in the whole trip as settled, not just the one(s) on screen.
+  // Every bill still has to be written back (Firebase replaces the
+  // whole `bills` node), so untouched bills are written unchanged.
+  const settleAllBills = (billIds = null) => {
     if (!currentTripId) return;
+    const targetIds = billIds && billIds.length > 0
+      ? new Set(billIds)
+      : new Set(tripBills.filter((b) => b.status !== "Finished").map((b) => b.id));
     const obj = {};
-    tripBills.forEach((b) => { obj[b.id] = { ...b, status: "Finished" }; });
+    tripBills.forEach((b) => {
+      obj[b.id] = targetIds.has(b.id) ? { ...b, status: "Finished" } : b;
+    });
     set(ref(db, `trips/${currentTripId}/bills`), obj);
     setSelectedBill(null);
+    setCustomSplit(null);
   };
 
   // ── Member actions ──
@@ -666,8 +745,8 @@ function App() {
       case "receipt":         return <Bills {...p} setSelectedBill={setSelectedBill} />;
       case "billhistory":     return <BillHistory {...p} setSelectedBill={setSelectedBill} />;
       case "billdetail":      return <BillDetail {...p} selectedBill={selectedBill} startEditExpense={startEditExpense} />;
-      case "settlement":      return <Settlement {...p} settleAllBills={settleAllBills} selectedBill={selectedBill} onSettleAndEarnPoints={addPoints} />;
-      case "splitbill":       return <SplitBill setPage={setPage} tripBills={tripBills} tripMembers={tripMembers} setSelectedBill={setSelectedBill} />;
+      case "settlement":      return <Settlement {...p} settleAllBills={settleAllBills} selectedBill={selectedBill} onSettleAndEarnPoints={addPoints} userProfile={userProfile} customSplit={customSplit} />;
+      case "splitbill":       return <SplitBill setPage={setPage} tripBills={tripBills} tripMembers={tripMembers} setSelectedBill={setSelectedBill} customSplit={customSplit} setCustomSplit={setCustomSplit} />;
       case "splitcalculator": return <SplitCalculator setPage={setPage} selectedBill={selectedBill} />;
       case "profile":         return <Profile setPage={setPage} userProfile={userProfile} setUserProfile={setUserProfile} renameProfile={renameProfile} theme={theme} setTheme={setTheme} />;
       case "trophy":

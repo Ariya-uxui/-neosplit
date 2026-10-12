@@ -317,16 +317,21 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
 
   const handleConfirm = () => {
     groupedBills.forEach((group) => {
+      const isMultiItem = group.items.length > 1;
       addExpense({
-        name: group.items.length > 1
-          ? `Scanned: ${group.items.map((i) => i.name).join(", ")}`
-          : group.items[0].name,
+        // A short, stable title instead of every item's name stitched
+        // together (which could run to "Scanned: SINGHA BOTTLE,
+        // Brooklyn Lager, Vodka..." and overflow everywhere it's shown).
+        // The real item names aren't lost — they're kept on `items`
+        // below for a future itemized Bill Detail view.
+        name: isMultiItem ? `Scanned Receipt (${group.items.length} items)` : group.items[0].name,
         amount: group.total,
         paidBy,
         category: "Food",
         sharedBy: group.members,
         status: "Pending",
         date: new Date().toLocaleDateString("en-GB"),
+        items: group.items.map((i) => ({ name: i.name, amount: Number(i.amount) || 0 })),
       });
     });
     setPage("receipt");

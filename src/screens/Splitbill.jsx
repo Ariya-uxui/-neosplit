@@ -1,20 +1,39 @@
 import React, { useState } from "react";
 import "../App.css";
- 
-function SplitBill({ setPage, tripBills = [], tripMembers = [], setSelectedBill }) {
+
+function SplitBill({
+  setPage, tripBills = [], tripMembers = [], setSelectedBill,
+  customSplit = null, setCustomSplit = () => {},
+}) {
   const [mode, setMode] = useState("Equal");
   const [selectedBillIds, setSelectedBillIds] = useState([]);
-  const [customAmounts, setCustomAmounts] = useState({});
- 
+  // Pick up a Custom Split that's already set (e.g. coming back from
+  // Settlement to tweak it) instead of starting blank every time.
+  const [customAmounts, setCustomAmounts] = useState(() => customSplit || {});
+
   const pendingBills = tripBills.filter((b) => b.status !== "Finished");
   const totalAmount = tripBills.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
- 
+  // Settlement only ever works over PENDING bills, so Custom Split has
+  // to be checked against that same total — not every bill ever added —
+  // or "fully assigned" here could still be wrong money once it reaches
+  // Settlement's math.
+  const pendingTotal = pendingBills.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
+
+  // Switching away from Custom clears any split that was being built —
+  // otherwise a half-finished (or already-applied) Custom Split could
+  // keep silently driving Settlement's math after you'd moved on to a
+  // different mode.
+  const changeMode = (title) => {
+    setMode(title);
+    if (title !== "Custom") setCustomSplit(null);
+  };
+
   const toggleBill = (id) => {
     setSelectedBillIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   };
- 
+
   const selectedBills = pendingBills.filter((b) => selectedBillIds.includes(b.id));
   const selectedTotal = selectedBills.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
 
@@ -23,8 +42,22 @@ function SplitBill({ setPage, tripBills = [], tripMembers = [], setSelectedBill 
   const selectedMembers = Array.from(
     new Set(selectedBills.flatMap((b) => (b.sharedBy?.length ? b.sharedBy : tripMembers)))
   );
+  const selectedEqualPerPerson = selectedMembers.length > 0 ? selectedTotal / selectedMembers.length : selectedTotal;
 
-  const handleContinue = () => {
+  // Custom Split's running check — "did what you typed actually add up
+  // to the bill?" instead of letting someone continue with ฿200
+  // unaccounted for and finding out only in Settlement.
+  const assignedTotal = tripMembers.reduce(
+    (sum, m) => sum + (Number(customAmounts[m]) || 0), 0
+  );
+  const remaining = Number((pendingTotal - assignedTotal).toFixed(2));
+  const isBalanced = Math.abs(remaining) < 0.01;
+
+  // Equal and Select Bills already know everything they need (the bill
+  // amount and who's sharing it) — there's nothing left to ask, so both
+  // go straight to Settlement instead of a Calculator screen that would
+  // just ask for the same Total/Number of People a second time.
+  const goToSettlement = () => {
     if (mode === "Select Bills") {
       setSelectedBill({
         id: `split-${Date.now()}`,
@@ -34,18 +67,29 @@ function SplitBill({ setPage, tripBills = [], tripMembers = [], setSelectedBill 
         pax: selectedMembers.length,
       });
     }
-    setPage("splitcalculator");
+    setPage("settlement");
   };
- 
+
+  // Custom already knows exactly what each person should end up paying
+  // — that's the whole point of Custom Split — so it goes straight to
+  // Settlement too and hands it the per-person amounts, instead of
+  // routing through a Calculator screen that only asks for a single
+  // Total ÷ People (which would throw the per-person breakdown away).
+  const applyCustomSplit = () => {
+    if (!isBalanced) return;
+    setCustomSplit(customAmounts);
+    setPage("settlement");
+  };
+
   const getCategoryIcon = (cat) =>
     ({ Food: "🍜", Ticket: "🎫", Transport: "🚕", Merch: "🛍️", Hotel: "🏨" }[cat] || "💸");
- 
+
   const options = [
     { title: "Equal", icon: "⚖️", text: "Everyone pays the same amount" },
     { title: "Custom", icon: "✏️", text: "Adjust each person's share manually" },
     { title: "Select Bills", icon: "🧾", text: "Split only the bills you pick" },
   ];
- 
+
   return (
     <div className="ns-screen">
       {/* ── Header ── */}
@@ -54,7 +98,7 @@ function SplitBill({ setPage, tripBills = [], tripMembers = [], setSelectedBill 
         <span className="ns-title">Split Bill</span>
         <div style={{ width: 36 }} />
       </div>
- 
+
       {/* ── Summary ── */}
       <div className="ns-card" style={{
         background: "linear-gradient(135deg, color-mix(in srgb, var(--ns-g) 10%, transparent), color-mix(in srgb, var(--ns-g) 3%, transparent))",
@@ -64,20 +108,20 @@ function SplitBill({ setPage, tripBills = [], tripMembers = [], setSelectedBill 
           Total to Split
         </div>
         <div style={{ fontFamily: "var(--ns-syne)", fontSize: 34, fontWeight: 800, color: "var(--ns-g)", letterSpacing: "-1px" }}>
-          {mode === "Select Bills" ? selectedTotal.toLocaleString() : totalAmount.toLocaleString()}
+          {mode === "Select Bills" ? selectedTotal.toLocaleString() : mode === "Custom" ? pendingTotal.toLocaleString() : totalAmount.toLocaleString()}
           <span style={{ fontSize: 16, color: "var(--ns-muted)", marginLeft: 6 }}>THB</span>
         </div>
         <div style={{ fontSize: 12, color: "var(--ns-muted)", marginTop: 4 }}>
           {tripBills.length} bills · {mode} mode
         </div>
       </div>
- 
+
       {/* ── Mode selector ── */}
       <div className="ns-section-label">Split Mode</div>
       {options.map((option) => (
         <button
           key={option.title}
-          onClick={() => setMode(option.title)}
+          onClick={() => changeMode(option.title)}
           style={{
             width: "100%", textAlign: "left", marginBottom: 10,
             padding: "14px 16px", borderRadius: 16, cursor: "pointer",
@@ -99,7 +143,7 @@ function SplitBill({ setPage, tripBills = [], tripMembers = [], setSelectedBill 
           )}
         </button>
       ))}
- 
+
       {/* ── Select Bills: เลือกบิล ── */}
       {mode === "Select Bills" && (
         <>
@@ -145,22 +189,47 @@ function SplitBill({ setPage, tripBills = [], tripMembers = [], setSelectedBill 
               );
             })
           )}
- 
+
           {selectedBills.length > 0 && (
-            <div style={{
-              padding: "12px 16px", marginBottom: 14,
-              background: "color-mix(in srgb, var(--ns-g) 6%, transparent)", border: "1px solid color-mix(in srgb, var(--ns-g) 20%, transparent)",
-              borderRadius: 14, display: "flex", justifyContent: "space-between",
-            }}>
-              <span style={{ fontSize: 13, color: "var(--ns-muted)" }}>Selected {selectedBills.length} bills</span>
-              <span style={{ fontFamily: "var(--ns-syne)", fontSize: 15, fontWeight: 800, color: "var(--ns-g)" }}>
-                {selectedTotal.toLocaleString()} THB
-              </span>
-            </div>
+            <>
+              <div style={{
+                padding: "12px 16px", marginBottom: 14,
+                background: "color-mix(in srgb, var(--ns-g) 6%, transparent)", border: "1px solid color-mix(in srgb, var(--ns-g) 20%, transparent)",
+                borderRadius: 14, display: "flex", justifyContent: "space-between",
+              }}>
+                <span style={{ fontSize: 13, color: "var(--ns-muted)" }}>Selected {selectedBills.length} bills</span>
+                <span style={{ fontFamily: "var(--ns-syne)", fontSize: 15, fontWeight: 800, color: "var(--ns-g)" }}>
+                  {selectedTotal.toLocaleString()} THB
+                </span>
+              </div>
+
+              {/* Already know the total and who's sharing it — show the
+                  result immediately instead of sending you to a
+                  calculator to re-enter the same numbers. */}
+              <div style={{
+                background: "linear-gradient(135deg, color-mix(in srgb, var(--ns-g) 10%, transparent), color-mix(in srgb, var(--ns-g) 3%, transparent))",
+                border: "1px solid color-mix(in srgb, var(--ns-g) 25%, transparent)",
+                borderRadius: 24, padding: "24px 22px",
+                textAlign: "center", marginBottom: 20,
+              }}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "color-mix(in srgb, var(--ns-g) 70%, transparent)", marginBottom: 8 }}>
+                  Each Person Pays
+                </div>
+                <div style={{ fontFamily: "var(--ns-syne)", fontSize: 44, fontWeight: 800, letterSpacing: "-2px", color: "var(--ns-g)", lineHeight: 1 }}>
+                  {selectedEqualPerPerson.toFixed(2)}
+                </div>
+                <div style={{ fontSize: 14, color: "var(--ns-muted)", marginTop: 6 }}>THB / person</div>
+                {selectedMembers.length > 0 && (
+                  <div style={{ fontSize: 12, color: "var(--ns-muted)", marginTop: 8 }}>
+                    {selectedMembers.join(" · ")}
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </>
       )}
- 
+
       {/* ── Equal: show the result immediately, no calculator needed ── */}
       {mode === "Equal" && (
         <div style={{
@@ -188,6 +257,10 @@ function SplitBill({ setPage, tripBills = [], tripMembers = [], setSelectedBill 
       {mode === "Custom" && tripMembers.length > 0 && (
         <>
           <div className="ns-section-label">Custom Amount per Person</div>
+          <div style={{ fontSize: 12, color: "var(--ns-muted)", marginTop: -6, marginBottom: 10 }}>
+            This replaces the equal split for ALL pending bills — Settlement will use these
+            exact amounts instead of splitting each bill evenly.
+          </div>
           {tripMembers.map((member) => (
             <div key={member} className="ns-card" style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
               <div style={{
@@ -214,29 +287,52 @@ function SplitBill({ setPage, tripBills = [], tripMembers = [], setSelectedBill 
               <span style={{ fontSize: 12, color: "var(--ns-muted)" }}>THB</span>
             </div>
           ))}
+
+          {/* Running check so a ฿200 gap doesn't surface only once you're
+              already in Settlement. */}
+          <div className="ns-card" style={{
+            marginBottom: 20,
+            border: `1px solid ${isBalanced ? "color-mix(in srgb, var(--ns-g) 25%, transparent)" : "color-mix(in srgb, var(--ns-r) 25%, transparent)"}`,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <span style={{ fontSize: 13, color: "var(--ns-muted)" }}>Assigned</span>
+              <span style={{ fontFamily: "var(--ns-syne)", fontSize: 15, fontWeight: 700, color: "var(--ns-text)" }}>
+                {assignedTotal.toFixed(2)} / {pendingTotal.toFixed(2)} THB
+              </span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 13, color: "var(--ns-muted)" }}>
+                {isBalanced ? "Fully assigned" : remaining > 0 ? "Remaining" : "Over by"}
+              </span>
+              <span style={{ fontFamily: "var(--ns-syne)", fontSize: 18, fontWeight: 800, color: isBalanced ? "var(--ns-g)" : "var(--ns-r)" }}>
+                {isBalanced ? "✓ ฿0.00" : `${Math.abs(remaining).toFixed(2)} THB`}
+              </span>
+            </div>
+          </div>
         </>
       )}
- 
+
       {/* ── Actions ── */}
-      {mode !== "Equal" && (
+      {mode === "Custom" && (
         <button
           className="ns-btn ns-btn-primary"
           style={{ marginTop: 8 }}
-          onClick={handleContinue}
-          disabled={mode === "Select Bills" && selectedBills.length === 0}
+          onClick={applyCustomSplit}
+          disabled={!isBalanced}
         >
-          Continue to Calculator →
+          {isBalanced ? "Apply Custom Split →" : `Assign the remaining ${Math.abs(remaining).toFixed(2)} THB first`}
         </button>
       )}
       <button
-        className={`ns-btn ${mode === "Equal" ? "ns-btn-primary" : "ns-btn-ghost"}`}
-        style={{ marginTop: mode === "Equal" ? 8 : 10 }}
-        onClick={() => setPage("settlement")}
+        className={`ns-btn ${mode !== "Custom" ? "ns-btn-primary" : "ns-btn-ghost"}`}
+        style={{ marginTop: mode !== "Custom" ? 8 : 10 }}
+        onClick={mode === "Custom" ? () => setPage("settlement") : goToSettlement}
+        disabled={mode === "Select Bills" && selectedBills.length === 0}
       >
-        {mode === "Equal" ? "View Settlement →" : "← Back to Settlement"}
+        {mode === "Custom" ? "← Back to Settlement" : "View Settlement →"}
       </button>
     </div>
   );
 }
- 
+
 export default SplitBill;

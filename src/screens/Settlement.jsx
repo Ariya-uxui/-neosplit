@@ -27,8 +27,11 @@ function Settlement({
   settleAllBills,
   selectedBill = null,
   onSettleAndEarnPoints,
+  userProfile = null,
+  customSplit = null,
 }) {
   const [expandedBalance, setExpandedBalance] = useState(null);
+  const myName = userProfile?.name || null;
 
   const billsForCalculation = useMemo(() => {
     const sourceBills =
@@ -59,18 +62,46 @@ function Settlement({
       bill.sharedBy.forEach((name) => memberSet.add(name));
     });
 
+    const pendingTotal = billsForCalculation.reduce((s, b) => s + (Number(b.amount) || 0), 0);
+
+    // Custom Split only ever applies to the whole trip's pending bills
+    // (never to a single drilled-into bill), and only while its total
+    // still matches what's actually pending — add, delete, or settle a
+    // bill and the old Custom Split no longer adds up to the real total,
+    // so it's ignored rather than silently applied to the wrong amount.
+    const customTotal = customSplit
+      ? Object.values(customSplit).reduce((s, v) => s + (Number(v) || 0), 0)
+      : 0;
+    const customApplies =
+      !!customSplit && !selectedBill &&
+      Object.keys(customSplit).length > 0 &&
+      Math.abs(customTotal - pendingTotal) < 0.01;
+
     const balances = {};
     Array.from(memberSet).forEach((m) => { balances[m] = 0; });
 
-    billsForCalculation.forEach((bill) => {
-      const amount = Number(bill.amount) || 0;
-      const payer = bill.paidBy;
-      const participants = bill.sharedBy || [];
-      if (!payer || participants.length === 0) return;
-      const shares = splitDeterministic(amount, participants);
-      balances[payer] += amount;
-      participants.forEach((person) => { balances[person] -= shares[person]; });
-    });
+    if (customApplies) {
+      // Each payer still gets full credit for what they actually paid,
+      // bill by bill — only the "what do you owe" side changes, from an
+      // equal per-bill share to the one fixed amount Custom Split set
+      // for that person, applied once against the whole pending total.
+      billsForCalculation.forEach((bill) => {
+        if (bill.paidBy) balances[bill.paidBy] += Number(bill.amount) || 0;
+      });
+      Object.keys(balances).forEach((name) => {
+        if (customSplit[name] != null) balances[name] -= Number(customSplit[name]) || 0;
+      });
+    } else {
+      billsForCalculation.forEach((bill) => {
+        const amount = Number(bill.amount) || 0;
+        const payer = bill.paidBy;
+        const participants = bill.sharedBy || [];
+        if (!payer || participants.length === 0) return;
+        const shares = splitDeterministic(amount, participants);
+        balances[payer] += amount;
+        participants.forEach((person) => { balances[person] -= shares[person]; });
+      });
+    }
 
     const creditors = [];
     const debtors = [];
@@ -98,14 +129,15 @@ function Settlement({
 
     const totalAmount = billsForCalculation.reduce((s, b) => s + (Number(b.amount) || 0), 0);
     const amountToTransfer = transfers.reduce((s, t) => s + t.amount, 0);
-    return { balances, transfers, totalAmount, amountToTransfer };
-  }, [billsForCalculation, tripMembers]);
+    return { balances, transfers, totalAmount, amountToTransfer, customApplies };
+  }, [billsForCalculation, tripMembers, customSplit, selectedBill]);
 
   const getCategoryIcon = (cat) =>
     ({ Food:"🍜", Ticket:"🎫", Transport:"🚕", Travel:"🚕", Merch:"🛍️", Hotel:"🏨" }[cat] || "💸");
 
   const isAllSettled = billsForCalculation.length === 0;
   const pointsToEarn = billsForCalculation.length * 10;
+  const customApplies = result.customApplies;
 
   // Only balances that actually mean something — a row that's exactly
   // 0.00 (paid for exactly their own share, or fully settled already)
@@ -114,12 +146,45 @@ function Settlement({
     ([, balance]) => Math.abs(balance) > 0.01
   );
 
-  // Answers "what actually adds up to this number" for a given person —
-  // the Smart Transfer amount itself is a netted, minimized transfer and
-  // doesn't map 1:1 back to individual bills, but a person's own balance
-  // does: it's just the sum of what they paid minus what they owe,
-  // bill by bill. This is what makes that sum inspectable.
+  // The one question everyone actually has: "do *I* need to pay someone,
+  // and how much?" — pulled out separately from the group-wide transfer
+  // list so it's the very first thing you see, not something you have to
+  // find yourself inside a list of everyone else's transfers too.
+  const myOutgoing = myName ? result.transfers.filter((t) => t.from === myName) : [];
+  const myIncoming = myName ? result.transfers.filter((t) => t.to === myName) : [];
+  const myOweTotal = myOutgoing.reduce((s, t) => s + t.amount, 0);
+  const myReceiveTotal = myIncoming.reduce((s, t) => s + t.amount, 0);
+
+  // "Who Pays Who" grouped by the person doing the paying — so if Pin
+  // owes two different people, that's one block ("Pin needs to pay"),
+  // not two disconnected rows that happen to share a name.
+  const transfersByPayer = useMemo(() => {
+    const map = {};
+    result.transfers.forEach((t) => {
+      if (!map[t.from]) map[t.from] = [];
+      map[t.from].push(t);
+    });
+    return map;
+  }, [result.transfers]);
+
+  // Answers "what actually adds up to this number" for a given person.
+  // Under the normal equal split this is bill-by-bill (paid X, your
+  // share Y). Under a Custom Split, the paid-side is still per bill
+  // (that part is always real), but the owed-side is the one fixed
+  // amount Custom Split set for them — shown as a single line instead
+  // of a made-up per-bill share that isn't how the money actually works.
   const getContributions = (name) => {
+    if (customApplies) {
+      const payerLines = billsForCalculation
+        .filter((bill) => bill.paidBy === name)
+        .map((bill) => ({ name: bill.name, net: Number(bill.amount) || 0, isPayer: true, isParticipant: false, amount: bill.amount }));
+      const myCustomShare = Number(customSplit[name]) || 0;
+      const shareLine = myCustomShare > 0.005
+        ? [{ name: "Custom Split", net: -myCustomShare, isPayer: false, isParticipant: true, custom: true }]
+        : [];
+      return [...payerLines, ...shareLine];
+    }
+
     return billsForCalculation
       .map((bill) => {
         const isPayer = bill.paidBy === name;
@@ -137,7 +202,10 @@ function Settlement({
   };
 
   const handleSettleAll = () => {
-    settleAllBills();
+    // Only the bills actually shown here get marked Finished — looking
+    // at just one bill (from Bill Detail) or a "Select Bills" split no
+    // longer settles every other pending bill in the trip along with it.
+    settleAllBills(billsForCalculation.map((b) => b.id));
     if (onSettleAndEarnPoints) onSettleAndEarnPoints(pointsToEarn);
     setPage("pay");
   };
@@ -152,13 +220,14 @@ function Settlement({
         <div style={{ width: 36 }} />
       </div>
 
-      {/* ── Summary hero ── */}
+      {/* ── Summary hero — this number is money left to transfer, NOT
+          the total value of pending bills (shown separately below it) ── */}
       <div className="ns-card" style={{
         background: "linear-gradient(135deg, color-mix(in srgb, var(--ns-g) 10%, transparent), color-mix(in srgb, var(--ns-g) 3%, transparent))",
         border: "1px solid color-mix(in srgb, var(--ns-g) 20%, transparent)", marginBottom: 14,
       }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "color-mix(in srgb, var(--ns-g) 70%, transparent)", marginBottom: 6 }}>
-          {selectedBill ? "Bill Settlement" : "Left to Settle"}
+          {selectedBill ? "Bill Settlement" : "Money Left to Transfer"}
         </div>
         <div style={{ fontFamily: "var(--ns-syne)", fontSize: 34, fontWeight: 800, color: "var(--ns-g)", letterSpacing: "-1px", lineHeight: 1 }}>
           {result.amountToTransfer.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -176,12 +245,99 @@ function Settlement({
           marginTop: 14, paddingTop: 12, borderTop: "1px solid color-mix(in srgb, var(--ns-g) 15%, transparent)",
           display: "flex", justifyContent: "space-between", alignItems: "center",
         }}>
-          <span style={{ fontSize: 12, color: "var(--ns-muted)" }}>Pending expenses (total value)</span>
+          <span style={{ fontSize: 12, color: "var(--ns-muted)" }}>Total of pending bills (not what you owe)</span>
           <span style={{ fontFamily: "var(--ns-syne)", fontSize: 15, fontWeight: 700, color: "var(--ns-text)" }}>
             {result.totalAmount.toLocaleString()} THB
           </span>
         </div>
       </div>
+
+      {/* ── Custom Split applied — makes it visible that balances below
+          are NOT the usual equal split, and gives a way back to change it ── */}
+      {customApplies && (
+        <div className="ns-card" style={{ marginBottom: 14, border: "1px solid color-mix(in srgb, var(--ns-y) 30%, transparent)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ns-y)" }}>
+              ✏️ Custom Split Applied
+            </span>
+            <button
+              className="ns-btn ns-btn-ghost"
+              style={{ width: "auto", padding: "6px 12px", fontSize: 12 }}
+              onClick={() => setPage("splitbill")}
+            >
+              Change
+            </button>
+          </div>
+          {Object.entries(customSplit).map(([name, amt]) => (
+            <div key={name} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "4px 0" }}>
+              <span style={{ color: "var(--ns-text)" }}>{name === myName ? "You" : name}</span>
+              <span style={{ fontFamily: "var(--ns-syne)", fontWeight: 700, color: "var(--ns-text)" }}>{Number(amt || 0).toFixed(2)} THB</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Your Transfers — the one question everyone actually has ── */}
+      {!isAllSettled && myName && (
+        <>
+          <div className="ns-section-label">Your Transfers</div>
+          <div className="ns-card" style={{ marginBottom: 14 }}>
+            {myOutgoing.length === 0 && myIncoming.length === 0 && (
+              <div style={{ textAlign: "center", padding: "8px 0" }}>
+                <div style={{ fontSize: 28, marginBottom: 6 }}>✅</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ns-g)" }}>You're all settled</div>
+                <div style={{ fontSize: 12, color: "var(--ns-muted)", marginTop: 2 }}>
+                  Other transfers are still pending below
+                </div>
+              </div>
+            )}
+
+            {myOutgoing.length > 0 && (
+              <div style={{ marginBottom: myIncoming.length > 0 ? 16 : 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ns-r)" }}>You need to pay</span>
+                  <span style={{ fontFamily: "var(--ns-syne)", fontSize: 20, fontWeight: 800, color: "var(--ns-r)" }}>
+                    {myOweTotal.toFixed(2)} <span style={{ fontSize: 12, color: "var(--ns-muted)" }}>THB</span>
+                  </span>
+                </div>
+                {myOutgoing.map((t, i) => (
+                  <div key={`out-${i}`} style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "8px 0", borderTop: i > 0 ? "1px solid var(--ns-border)" : "none",
+                  }}>
+                    <span style={{ fontSize: 14, color: "var(--ns-text)", fontWeight: 600 }}>{t.to}</span>
+                    <span style={{ fontFamily: "var(--ns-syne)", fontSize: 14, fontWeight: 700, color: "var(--ns-r)" }}>
+                      {t.amount.toFixed(2)} THB
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {myIncoming.length > 0 && (
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ns-g)" }}>You'll receive</span>
+                  <span style={{ fontFamily: "var(--ns-syne)", fontSize: 20, fontWeight: 800, color: "var(--ns-g)" }}>
+                    {myReceiveTotal.toFixed(2)} <span style={{ fontSize: 12, color: "var(--ns-muted)" }}>THB</span>
+                  </span>
+                </div>
+                {myIncoming.map((t, i) => (
+                  <div key={`in-${i}`} style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "8px 0", borderTop: i > 0 ? "1px solid var(--ns-border)" : "none",
+                  }}>
+                    <span style={{ fontSize: 14, color: "var(--ns-text)", fontWeight: 600 }}>{t.from}</span>
+                    <span style={{ fontFamily: "var(--ns-syne)", fontSize: 14, fontWeight: 700, color: "var(--ns-g)" }}>
+                      +{t.amount.toFixed(2)} THB
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* ── All settled state ── */}
       {isAllSettled && (
@@ -231,7 +387,7 @@ function Settlement({
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span>Each person pays</span>
                   <span style={{ color: "var(--ns-g)", fontFamily: "var(--ns-syne)", fontWeight: 700, fontSize: 13 }}>
-                    {bill.splitAmount.toFixed(2)} THB
+                    {customApplies ? "custom split applied" : `${bill.splitAmount.toFixed(2)} THB`}
                   </span>
                 </div>
               </div>
@@ -240,10 +396,10 @@ function Settlement({
         </>
       )}
 
-      {/* ── Balances — only shown when at least one is actually non-zero ── */}
+      {/* ── Group Balances ── */}
       {nonZeroBalances.length > 0 && (
         <>
-          <div className="ns-section-label">Balances</div>
+          <div className="ns-section-label">Group Balances</div>
           <div style={{ fontSize: 11, color: "var(--ns-muted)", marginTop: -8, marginBottom: 10 }}>
             Tap a balance to see what it's made of
           </div>
@@ -251,6 +407,7 @@ function Settlement({
             const isPos = balance >= 0;
             const isExpanded = expandedBalance === name;
             const contributions = isExpanded ? getContributions(name) : [];
+            const isMe = name === myName;
             return (
               <div key={name} className="ns-card ns-clickable"
                 style={{ animationDelay: `${index * 0.06}s`, animation: "cardUp 0.3s ease", borderColor: isPos ? "color-mix(in srgb, var(--ns-g) 15%, transparent)" : "color-mix(in srgb, var(--ns-r) 15%, transparent)", cursor: "pointer" }}
@@ -261,7 +418,9 @@ function Settlement({
                     {name.charAt(0).toUpperCase()}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ns-text)", marginBottom: 3 }}>{name}</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ns-text)", marginBottom: 3 }}>
+                      {name}{isMe ? " (You)" : ""}
+                    </div>
                     <div style={{ fontSize: 12, color: "var(--ns-muted)" }}>{isPos ? "Gets back" : "Owes"}</div>
                   </div>
                   <div style={{ fontFamily: "var(--ns-syne)", fontSize: 18, fontWeight: 800, color: isPos ? "var(--ns-g)" : "var(--ns-r)", textAlign: "right" }}>
@@ -277,9 +436,10 @@ function Settlement({
                       <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                         <span style={{ color: "var(--ns-text2)" }}>
                           {c.name}
-                          {c.isPayer && c.isParticipant && ` (paid ${c.amount.toFixed(2)}, your share ${c.share.toFixed(2)})`}
-                          {c.isPayer && !c.isParticipant && ` (paid ${c.amount.toFixed(2)} for others)`}
-                          {!c.isPayer && c.isParticipant && ` (your share)`}
+                          {c.custom && " (fixed amount from Custom Split)"}
+                          {!c.custom && c.isPayer && c.isParticipant && ` (paid ${c.amount.toFixed(2)}, your share ${c.share.toFixed(2)})`}
+                          {!c.custom && c.isPayer && !c.isParticipant && ` (paid ${c.amount.toFixed(2)} for others)`}
+                          {!c.custom && !c.isPayer && c.isParticipant && ` (your share)`}
                         </span>
                         <span style={{ fontWeight: 700, color: c.net >= 0 ? "var(--ns-g)" : "var(--ns-r)", flexShrink: 0, marginLeft: 10 }}>
                           {c.net >= 0 ? "+" : ""}{c.net.toFixed(2)}
@@ -294,31 +454,40 @@ function Settlement({
         </>
       )}
 
-      {/* ── Smart Transfers ── */}
+      {/* ── Who Pays Who — every transfer in the group, grouped by who's
+          doing the paying, so "Pin owes two people" reads as one block
+          instead of two disconnected rows ── */}
       {!isAllSettled && (
         <>
-          <div className="ns-section-label">Smart Transfers</div>
+          <div className="ns-section-label">Who Pays Who</div>
           {result.transfers.length === 0 ? (
             <div className="ns-card" style={{ textAlign: "center", padding: 24 }}>
               <div style={{ fontSize: 28, marginBottom: 6 }}>✅</div>
               <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ns-g)" }}>No transfers needed</div>
             </div>
           ) : (
-            result.transfers.map((item, index) => (
-              <div key={`${item.from}-${item.to}-${index}`} className="ns-card"
-                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", animationDelay: `${index * 0.08}s`, animation: "cardUp 0.3s ease" }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, color: "var(--ns-muted)", marginBottom: 4 }}>Transfer</div>
-                  <div style={{ fontSize: 14, color: "var(--ns-text)" }}>
-                    <span style={{ fontWeight: 700, color: "var(--ns-r)" }}>{item.from}</span>
-                    <span style={{ margin: "0 8px", color: "var(--ns-muted)" }}>→</span>
-                    <span style={{ fontWeight: 700, color: "var(--ns-g)" }}>{item.to}</span>
+            Object.entries(transfersByPayer).map(([payer, items], groupIndex) => (
+              <div key={payer} className="ns-card"
+                style={{ animationDelay: `${groupIndex * 0.08}s`, animation: "cardUp 0.3s ease", marginBottom: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ns-text)", marginBottom: 10 }}>
+                  {payer === myName ? "You" : payer} need{payer === myName ? "" : "s"} to pay
+                </div>
+                {items.map((item, i) => (
+                  <div key={`${item.to}-${i}`} style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "6px 0", borderTop: i > 0 ? "1px solid var(--ns-border)" : "none",
+                  }}>
+                    <div style={{ fontSize: 14, color: "var(--ns-text)" }}>
+                      <span style={{ color: "var(--ns-muted)" }}>→</span>{" "}
+                      <span style={{ fontWeight: 700, color: "var(--ns-g)" }}>
+                        {item.to === myName ? "You" : item.to}
+                      </span>
+                    </div>
+                    <span style={{ fontFamily: "var(--ns-syne)", fontSize: 15, fontWeight: 800, color: "var(--ns-g)" }}>
+                      {item.amount.toFixed(2)} <span style={{ fontSize: 10, color: "var(--ns-muted)" }}>THB</span>
+                    </span>
                   </div>
-                </div>
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <div style={{ fontFamily: "var(--ns-syne)", fontSize: 20, fontWeight: 800, color: "var(--ns-g)" }}>{item.amount.toFixed(2)}</div>
-                  <div style={{ fontSize: 10, color: "var(--ns-muted)" }}>THB</div>
-                </div>
+                ))}
               </div>
             ))
           )}
