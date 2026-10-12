@@ -1,10 +1,23 @@
 import React, { useState } from "react";
 import "../App.css";
 
+// Trip date is stored as "DD/MM/YYYY" (en-GB), matching how it's shown
+// elsewhere (Home trip cards, Edit Trip, etc.), but the native
+// <input type="date"> — which gives a tap-to-scroll date picker on phones —
+// only speaks "YYYY-MM-DD". These convert between the two so the stored
+// format never has to change. Unlike a bill's date, a trip's date can be
+// in the future (e.g. a concert date), so there's no "max" cap here.
+const todayInput = () => new Date().toISOString().slice(0, 10);
+const toDisplayDate = (iso) => {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+};
+
 function CreateTrip({ setPage, addTrip, userProfile, teams = [], addTeam }) {
   const creatorName = userProfile?.name?.trim();
   const [tripName, setTripName] = useState("");
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(todayInput());
   const [location, setLocation] = useState("");
   const [memberInput, setMemberInput] = useState("");
   const [members, setMembers] = useState(() => (creatorName ? [creatorName] : []));
@@ -52,9 +65,11 @@ function CreateTrip({ setPage, addTrip, userProfile, teams = [], addTeam }) {
     return Object.keys(e).length === 0;
   };
 
+  const displayDate = toDisplayDate(date);
+
   const handleSave = () => {
     if (!validate()) return;
-    addTrip({ title: tripName, members: members.length, memberList: members, total: "0", date, location, creator: creatorName || "" });
+    addTrip({ title: tripName, members: members.length, memberList: members, total: "0", date: displayDate, location, creator: creatorName || "" });
     setPage("home");
   };
 
@@ -76,9 +91,16 @@ function CreateTrip({ setPage, addTrip, userProfile, teams = [], addTeam }) {
           {errors.tripName && <p className="ns-error">{errors.tripName}</p>}
         </div>
 
+        {/* Date — defaults to today; tapping it opens the phone's native
+            scroll-wheel date picker to pick a different day */}
         <div className="ns-input-group">
           <label className="ns-input-label">Date</label>
-          <input className="ns-input" placeholder="10/04/2026" value={date} onChange={(e) => setDate(e.target.value)} />
+          <input
+            className="ns-input"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
           {errors.date && <p className="ns-error">{errors.date}</p>}
         </div>
 
@@ -184,7 +206,7 @@ function CreateTrip({ setPage, addTrip, userProfile, teams = [], addTeam }) {
             {tripName || "Your trip name"}
           </div>
           <div style={{ fontSize: 13, color: "var(--ns-muted)" }}>
-            {members.length} members · {location || "Location"} {date ? `· ${date}` : ""}
+            {members.length} members · {location || "Location"} {displayDate ? `· ${displayDate}` : ""}
           </div>
         </div>
       )}
