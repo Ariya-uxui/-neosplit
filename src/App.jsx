@@ -29,6 +29,14 @@ import { db, auth } from "./firebase";
 import { ref, onValue, set, remove, runTransaction, get } from "firebase/database";
 import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
 
+// Case/whitespace-tolerant name comparison. The rename cascade below
+// used to require an exact string match between your Profile name and a
+// trip member entry — a stray space or different capitalization (easy
+// to end up with when two different screens/people typed the "same"
+// name independently) silently skipped the whole cascade, leaving your
+// old name's bills/points orphaned as what looked like a second person.
+const sameName = (a, b) => (a || "").trim().toLowerCase() === (b || "").trim().toLowerCase();
+
 const normalizeBill = (bill) => {
   const sharedBy = Array.isArray(bill.sharedBy) ? bill.sharedBy : [];
   const peopleCount = sharedBy.length || Number(bill.pax) || Number(bill.people) || 1;
@@ -255,6 +263,27 @@ function App() {
       return { name: "NongTaeyoung", selectedBias: "Taeyong", profileImage: "" };
     }
   });
+
+  // ── Identity, phase 1 ──
+  // Today a person is identified ONLY by matching display-name strings
+  // (userProfile.name === a trip member, bill.paidBy === a name, …) — the
+  // exact design the "NongTaeyoung became a second person called Toey"
+  // bug comes from: rename the string anywhere it isn't an exact match
+  // and the old history gets orphaned instead of following you. A real
+  // fix needs a stable ID on every trip member, which touches most
+  // screens — this step only adds the one piece that's safe to add
+  // alone: a permanent ID for THIS device's own profile, generated once
+  // and never changed by a rename. Nothing reads it yet; it's here so
+  // the next phase (giving trip members the same treatment) has a
+  // stable anchor to work from instead of improvising one later.
+  useEffect(() => {
+    if (userProfile?.id) return;
+    setUserProfile((prev) => ({
+      ...prev,
+      id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userProfile?.id]);
 
   // ── Teams ──
   // A "Team" here is deliberately lightweight: just a saved member list
@@ -606,7 +635,7 @@ function App() {
     if (!trimmed || trimmed === oldName || !currentTripId) return;
 
     const isDuplicate = tripMembers.some(
-      (m) => m !== oldName && m.toLowerCase() === trimmed.toLowerCase()
+      (m) => !sameName(m, oldName) && sameName(m, trimmed)
     );
     if (isDuplicate) {
       setToast("That name is already used");
@@ -700,11 +729,99 @@ function App() {
     const trimmed = (newName || "").trim();
     if (!trimmed) return;
     const oldName = userProfile?.name;
-    if (oldName && oldName !== trimmed && currentTripId && tripMembers.includes(oldName)) {
-      editMember(oldName, trimmed);
+    // Match tolerantly (sameName), but cascade using the member entry's
+    // OWN exact string — editMember reads/writes Firebase keys by that
+    // exact string, so passing the possibly-differently-cased profile
+    // name through here instead would just recreate the same bug.
+    const existingMember = currentTripId ? tripMembers.find((m) => sameName(m, oldName)) : null;
+    if (existingMember && !sameName(existingMember, trimmed)) {
+      editMember(existingMember, trimmed);
     }
     setUserProfile((prev) => ({ ...prev, name: trimmed }));
   };
+
+  // Merges a duplicate member's ENTIRE history into another member's.
+  // Unlike editMember (a forward-looking rename of one name to another),
+  // this SUMS points instead of overwriting — both names represent real
+  // accumulated history of the same person, so neither side should be
+  // discarded. Used by the one-time cleanup below, and reusable later
+  // from a screen if another duplicate like this ever turns up again.
+  const mergeMembers = (keepName, mergeName) => {
+    if (!currentTripId || !keepName || !mergeName || sameName(keepName, mergeName)) return;
+    const tripId = currentTripId;
+
+    const newMembers = tripMembers.filter((m) => !sameName(m, mergeName));
+    if (!newMembers.some((m) => sameName(m, keepName))) newMembers.push(keepName);
+    const membersObj = {};
+    newMembers.forEach((m, i) => { membersObj[i] = m; });
+    set(ref(db, `trips/${tripId}/members`), membersObj);
+
+    if (sameName(currentTrip?.creator, mergeName)) {
+      set(ref(db, `trips/${tripId}/creator`), keepName);
+    }
+    if (sameName(userProfile?.name, mergeName)) {
+      setUserProfile((prev) => ({ ...prev, name: keepName }));
+    }
+
+    tripBills.forEach((bill) => {
+      let changed = false;
+      const updated = { ...bill };
+      if (sameName(updated.paidBy, mergeName)) { updated.paidBy = keepName; changed = true; }
+      if (Array.isArray(updated.sharedBy) && updated.sharedBy.some((n) => sameName(n, mergeName))) {
+        updated.sharedBy = Array.from(new Set(
+          updated.sharedBy.map((n) => (sameName(n, mergeName) ? keepName : n))
+        ));
+        changed = true;
+      }
+      if (changed) set(ref(db, `trips/${tripId}/bills/${updated.id}`), updated);
+    });
+
+    tripRedeems.forEach((req) => {
+      if (sameName(req.memberName, mergeName)) {
+        set(ref(db, `trips/${tripId}/redeemRequests/${req.id}/memberName`), keepName);
+      }
+    });
+
+    // Points are the one place a merge differs from a plain rename — add
+    // the two balances together instead of letting the second write
+    // clobber the first, since both are real points earned by the same
+    // person under two different names.
+    const sumKey = (path) => {
+      Promise.all([
+        get(ref(db, `${path}/${keepName}`)),
+        get(ref(db, `${path}/${mergeName}`)),
+      ]).then(([keepSnap, mergeSnap]) => {
+        const total = (Number(keepSnap.val()) || 0) + (Number(mergeSnap.val()) || 0);
+        set(ref(db, `${path}/${keepName}`), total);
+        remove(ref(db, `${path}/${mergeName}`));
+      }).catch((err) => console.error(`Failed to merge ${path}:`, err));
+    };
+    sumKey(`trips/${tripId}/memberPoints`);
+    sumKey(`trips/${tripId}/memberLifetimePoints`);
+
+    setToast(`Merged ${mergeName} into ${keepName} ✓`);
+  };
+
+  // ── One-time cleanup for a known duplicate ──
+  // "NongTaeyoung" (an old name) and "Toey" (the same person's current
+  // name) ended up as two separate member entries with separate point
+  // histories — exactly the bug the Identity work above exists to catch
+  // earlier next time. This merges that specific pair, once, the first
+  // time a trip is loaded with both names still in its member list. A
+  // flag on the trip stops it from ever running a second time (so it's
+  // safe even if this effect re-fires on every reload).
+  useEffect(() => {
+    if (!authReady || !currentTripId) return;
+    if (!tripMembers.some((m) => sameName(m, "NongTaeyoung"))) return;
+    if (!tripMembers.some((m) => sameName(m, "Toey"))) return;
+    const flagRef = ref(db, `trips/${currentTripId}/migrations/mergedNongTaeyoungIntoToey`);
+    get(flagRef).then((snap) => {
+      if (snap.exists()) return;
+      mergeMembers("Toey", "NongTaeyoung");
+      set(flagRef, true);
+    }).catch((err) => console.error("Merge check failed:", err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authReady, currentTripId, tripMembers]);
 
   // ── Edit Trip ──
   const updateTripDetails = ({ title, date, location }) => {
