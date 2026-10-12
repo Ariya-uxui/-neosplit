@@ -167,6 +167,12 @@ function App() {
   // just one field changing on one object, nothing else needs to move.
   const { trips, currentTripId, currentTrip, tripBills, tripMembers } = trip;
 
+  // Declared here (not further down with the other useState calls) because
+  // the Gang effects right below reference it — ESLint's no-use-before-define
+  // (and CRA's CI build, which treats that as a hard error) needs the
+  // declaration above every place it's read.
+  const [authReady, setAuthReady] = useState(false);
+
   // ── Gang: the persistent entity that owns rewards/points, spanning
   // every trip linked to it (unlike tripMembers, which is just this ONE
   // trip's roster for splitting bills). `currentTrip.gangId` is the link;
@@ -222,7 +228,6 @@ function App() {
   // set it was built against no longer matches (Settlement checks the
   // total itself).
   const [customSplit, setCustomSplit] = useState(null);
-  const [authReady, setAuthReady] = useState(false);
   const [theme, setThemeState] = useState(() => {
     try {
       return localStorage.getItem("neosplitTheme") || "neon";
@@ -806,7 +811,10 @@ function App() {
   // editMember (renaming one id), this SUMS points instead of
   // overwriting, since both ids represent real accumulated history of
   // the same person, and reassigns every bill/redeem reference from the
-  // merged id to the kept id.
+  // merged id to the kept id. Not wired to any screen yet — no "merge
+  // member" UI exists — so it's kept ready for whenever that's built,
+  // with the lint rule silenced rather than deleting working logic.
+  // eslint-disable-next-line no-unused-vars
   const mergeMembers = (keepId, mergeId) => {
     if (!currentTripId || !keepId || !mergeId || keepId === mergeId) return;
     const tripId = currentTripId;

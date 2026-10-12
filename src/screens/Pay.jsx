@@ -49,6 +49,10 @@ function Pay({ setPage, pointsEarned = 0, tripBills = [], tripMembers = [] }) {
       .filter(([, bal]) => bal > 0.01)
       .map(([id, amount]) => ({ id, name: nameOf(id), amount: Number(amount.toFixed(2)) }))
       .sort((a, b) => b.amount - a.amount);
+    // nameOf is a plain function redefined every render off tripMembers —
+    // already a dep below — so adding it here would just make this recompute
+    // every render instead of only when the real inputs change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripBills, tripMembers]);
 
   const handleUpload = (e) => {

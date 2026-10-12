@@ -48,6 +48,10 @@ function Home({ setPage, tripBills = [], tripMembers = [], userProfile, trips = 
       finishedCount: finished, finished, progress,
       topSpender, topSpenderAmount, yourBalance, recentBills, currentUserName,
     };
+    // nameOf is a plain function redefined every render off tripMembers —
+    // already a dep below — so adding it here would just make this recompute
+    // every render instead of only when the real inputs change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripBills, tripMembers, userProfile]);
 
   const getIcon = (cat) => ({ Food:"🍜", Ticket:"🎫", Transport:"🚕", Merch:"🛍️" }[cat] || "🧾");
