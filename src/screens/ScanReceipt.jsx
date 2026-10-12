@@ -96,6 +96,22 @@ const SKIP_LINE = [
   // 23:38" — without this, the trailing minutes/seconds can get mistaken
   // for a price by Pass 1 below.
   /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}/,
+  // "Transfer" confirmation lines and the currency-prefixed amount
+  // printed right under it (e.g. "โอนเงิน" / "฿240.00" / "$240.00") —
+  // this is the same total shown again for the payment receipt, not a
+  // priced item. Belt-and-braces alongside the hasLetter fix below,
+  // which already stops a bare "฿240.00" from looking like it has a
+  // letter in it.
+  /^โอนเงิน/i,
+  /^(transfer|payment)\b/i,
+  /^[฿$]\s*[\d,]+\.\d{1,2}$/,
+  // A receipt's own column headers ("สินค้า / Qty / ราคารวม" — Item /
+  // Qty / Total Price) printed once above the item table. Exact-match
+  // only, so a real item that happens to start with one of these words
+  // is never accidentally skipped.
+  /^สินค้า$/i,
+  /^qty$/i,
+  /^ราคารวม$/i,
 ];
 
 const isSkipLine = (line) => SKIP_LINE.some((re) => re.test(line));
@@ -105,7 +121,13 @@ const isSkipLine = (line) => SKIP_LINE.some((re) => re.test(line));
 // item's name. Real item names always have letters in every sample
 // receipt seen so far, so this is what keeps reference numbers from
 // being read as "items" with no name.
-const hasLetter = (s) => /[a-zA-Zก-๙]/.test(s);
+//
+// The Thai ranges below are deliberately split to exclude ฿ (the Baht
+// sign, U+0E3F) and the Thai digits ๐-๙ (U+0E50-0E59) — a single
+// "ก-๙" range looks like "Thai letters" but actually spans every
+// codepoint in between, Baht sign included, which previously let a
+// payment line like "฿240.00" pass as if it had a letter in it.
+const hasLetter = (s) => /[a-zA-Zก-ฮะ-ฺเ-๎]/.test(s);
 
 // A real item price always prints with cents (e.g. "70.00", "1,800.00")
 // on every receipt format seen so far — requiring the decimal point is
@@ -114,8 +136,24 @@ const hasLetter = (s) => /[a-zA-Zก-๙]/.test(s);
 // usually several plain digits with no decimal at all.
 const PRICE_ONLY = /^[\d,]+\.\d{1,2}$/;
 const PRICE_AT_END = /([\d,]+\.\d{1,2})\s*$/;
+// Some receipts print a price with a comma instead of a dot for the
+// decimal point (e.g. "120,00" instead of "120.00" — either a genuine
+// printer setting or an OCR misread of "." as ","). Only matches a
+// single comma followed by exactly 2 digits with no dot anywhere, so it
+// never collides with "," used as a thousands separator (e.g. "1,800.00"
+// already has its own dot and is handled by PRICE_ONLY above).
+const COMMA_DECIMAL_ONLY = /^\d+,\d{2}$/;
 // An item's quantity column — a short bare integer, e.g. "5", "12".
 const QTY_ONLY = /^\d{1,3}$/;
+
+// Reads a price-only line in either format above, or returns null if the
+// line isn't a clean price at all.
+const priceValue = (line) => {
+  if (!line) return null;
+  if (PRICE_ONLY.test(line)) return Number(line.replace(/,/g, ""));
+  if (COMMA_DECIMAL_ONLY.test(line)) return Number(line.replace(",", "."));
+  return null;
+};
 
 const cleanName = (raw) =>
   raw.replace(/^x\s*\d+\s*/i, "").trim().replace(/[-–—:.]+$/, "").trim();
@@ -163,17 +201,36 @@ const parseReceiptText = (text) => {
     }
   });
 
-  // Pass 2: structured "name / qty / unit price / line total" blocks.
+  // Pass 2: structured blocks where each item's name, quantity and price
+  // are on their own lines rather than sharing one line with Pass 1.
+  // Two layouts are tried at each position, since receipts differ on
+  // whether they print a separate unit-price column:
+  //  - 4 lines: name / qty / unit price / line total (bar & restaurant
+  //    tabs with a visible unit-price column, e.g. "VODKA"/"5"/"360.00"/
+  //    "1,800.00").
+  //  - 3 lines: name / qty / line total only, no unit-price column (a
+  //    simpler item/qty/total table) — the same line total either way.
   if (items.length === 0) {
     const tryBlock = (start) => {
       const nameLine = lines[start];
       if (!nameLine || isSkipLine(nameLine) || !hasLetter(nameLine) || PRICE_ONLY.test(nameLine)) return null;
       const qty = lines[start + 1];
+      if (!qty || !QTY_ONLY.test(qty)) return null;
+
       const unit = lines[start + 2];
-      const total = lines[start + 3];
-      if (!qty || !unit || !total) return null;
-      if (!QTY_ONLY.test(qty) || !PRICE_ONLY.test(unit) || !PRICE_ONLY.test(total)) return null;
-      return { name: cleanName(nameLine), amount: Number(total.replace(/,/g, "")) };
+      const total4 = lines[start + 3];
+      const totalFromUnit = priceValue(unit);
+      const totalFromTotal4 = priceValue(total4);
+      if (totalFromUnit != null && totalFromTotal4 != null) {
+        return { name: cleanName(nameLine), amount: totalFromTotal4, consumed: 4 };
+      }
+
+      const total3 = priceValue(lines[start + 2]);
+      if (total3 != null) {
+        return { name: cleanName(nameLine), amount: total3, consumed: 3 };
+      }
+
+      return null;
     };
 
     let i = 0;
@@ -183,11 +240,12 @@ const parseReceiptText = (text) => {
         i += 1;
         continue;
       }
-      items.push({ id: `item-${i}-${Date.now()}`, ...block });
-      i += 4;
+      const { consumed, ...item } = block;
+      items.push({ id: `item-${i}-${Date.now()}`, ...item });
+      i += consumed;
 
       const next = lines[i];
-      if (next && !isSkipLine(next) && hasLetter(next) && !PRICE_ONLY.test(next) && !tryBlock(i)) {
+      if (next && !isSkipLine(next) && hasLetter(next) && priceValue(next) == null && !tryBlock(i)) {
         items[items.length - 1].name = cleanName(`${items[items.length - 1].name} ${next}`);
         i += 1;
       }
@@ -201,8 +259,8 @@ const parseReceiptText = (text) => {
     const leftoverPrices = [];
     lines.forEach((line, i) => {
       if (isSkipLine(line)) return;
-      if (PRICE_ONLY.test(line)) {
-        const value = Number(line.replace(/,/g, ""));
+      const value = priceValue(line);
+      if (value != null) {
         if (value > 0 && value !== usedTotal) leftoverPrices.push({ i, value });
         return;
       }
