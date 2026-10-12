@@ -170,6 +170,7 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
   const [stage, setStage] = useState("capture"); // capture | processing | review | assign | confirm
   const [error, setError] = useState("");
   const [items, setItems] = useState([]);
+  const [rawText, setRawText] = useState(""); // last OCR output, shown in a debug box below so it can be read/screenshotted straight off the phone — no DevTools needed
   const [assignments, setAssignments] = useState({}); // { itemId: [names] }
   const [paidBy, setPaidBy] = useState(userProfile?.name || tripMembers[0] || "");
   const fileInputCamera = useRef(null);
@@ -190,10 +191,10 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "OCR failed");
-      // Logged so the raw OCR text can be checked in the browser's
-      // console (DevTools → Console) if items still come out wrong —
-      // no need to dig through Vercel logs for this part anymore.
-      console.log("OCR raw text:", data.text);
+      // Kept in state (shown in a collapsible debug box below) so the raw
+      // OCR text can just be read/screenshotted directly off the phone —
+      // no DevTools or computer needed to see what Vision actually read.
+      setRawText(data.text || "");
       const parsed = parseReceiptText(data.text || "");
       if (parsed.length === 0) {
         setError("Couldn't find any line items — you can add them manually below.");
@@ -211,6 +212,7 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
       setError("Something went wrong reading the receipt. Try again, or add items manually.");
       setItems([]);
       setAssignments({});
+      setRawText("");
       setStage("review");
     }
   };
@@ -378,6 +380,21 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
           <button className="ns-btn ns-btn-dark" style={{ marginBottom: 14 }} onClick={addBlankItem}>
             + Add Item
           </button>
+
+          {rawText && (
+            <details className="ns-card" style={{ marginBottom: 14, padding: 14 }}>
+              <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 700, color: "var(--ns-muted)" }}>
+                🔍 Debug: show raw scanned text
+              </summary>
+              <pre style={{
+                marginTop: 10, fontSize: 11, color: "var(--ns-text)", whiteSpace: "pre-wrap",
+                wordBreak: "break-word", maxHeight: 260, overflowY: "auto",
+                background: "var(--ns-card2)", borderRadius: 8, padding: 10,
+              }}>
+                {rawText}
+              </pre>
+            </details>
+          )}
 
           <button
             className="ns-btn ns-btn-primary"
