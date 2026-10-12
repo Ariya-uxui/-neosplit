@@ -1,7 +1,7 @@
 import React from "react";
 import "../App.css";
 
-function MyPoints({ setPage, userPoints = 0 }) {
+function MyPoints({ setPage, userPoints = 0, tripPoints = 0, currentTrip = null, gangName = "" }) {
   const level = userPoints < 50 ? "Beginner" : userPoints < 150 ? "Splitter" : userPoints < 300 ? "Top Splitter" : "Legend";
   const levelIcon = userPoints < 50 ? "🌱" : userPoints < 150 ? "⭐" : userPoints < 300 ? "🏅" : "👑";
   const nextLevel = userPoints < 50 ? 50 : userPoints < 150 ? 150 : userPoints < 300 ? 300 : 999;
@@ -50,6 +50,32 @@ function MyPoints({ setPage, userPoints = 0 }) {
         </div>
       )}
 
+      {/* ── Reward Points — a DIFFERENT number from the XP above. XP is
+          lifetime across every trip and never goes down; Reward Points
+          is scoped to your current GANG (shared across every trip under
+          it, not just this one) and is what actually gets spent when you
+          redeem something in Rewards — redeeming never touches your XP
+          or your Gang Points rank. Shown together so it's clear they're
+          not the same balance before tapping "Redeem Rewards" below and
+          finding a different number there. ── */}
+      {currentTrip && (
+        <div className="ns-card" style={{ marginBottom: 14, border: "1px solid color-mix(in srgb, var(--ns-y) 25%, transparent)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ns-y)" }}>
+                🎁 Reward Points
+              </div>
+              <div style={{ fontSize: 11, color: "var(--ns-muted)", marginTop: 3, maxWidth: 220 }}>
+                Spendable across your whole gang{gangName ? ` ("${gangName}")` : ""} — goes down when you redeem. Different from the lifetime XP above.
+              </div>
+            </div>
+            <div style={{ fontFamily: "var(--ns-syne)", fontSize: 24, fontWeight: 800, color: "var(--ns-y)", flexShrink: 0 }}>
+              {tripPoints}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── How to earn ── */}
       <div className="ns-section-label">How to Earn XP</div>
       <div className="ns-card">
@@ -67,7 +93,7 @@ function MyPoints({ setPage, userPoints = 0 }) {
       </div>
 
       <button className="ns-btn ns-btn-primary" style={{ marginTop: 14 }} onClick={() => setPage("rewardslist")}>
-        🎁 Redeem Rewards
+        🎁 Redeem Rewards{currentTrip ? ` (${tripPoints} pts)` : ""}
       </button>
       <button className="ns-btn ns-btn-ghost" style={{ marginTop: 10 }} onClick={() => setPage("trophy")}>
         🏆 View Leaderboard

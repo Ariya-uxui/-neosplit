@@ -177,17 +177,48 @@ const cleanName = (raw) =>
 //  3. Anything left over — name-only and price-only lines paired up
 //     positionally, in the order they appeared. Last resort, for
 //     receipts that don't cleanly match either layout above.
+// Pulls the grand-total amount straight off the receipt's own "Total /
+// รวม / ยอดรวม" line, independent of whatever the item parser below finds.
+// Used two ways: (1) inside parseReceiptText, so that number is never
+// mistaken for a line item itself, and (2) by the Review screen, to show
+// a "your items add up to X but the receipt says Y" check BEFORE saving
+// — exactly the kind of gap that let a single misread item slip through
+// unnoticed in the past. Returns null if no total line is found at all
+// (an unusual receipt layout, or OCR missed it), in which case no
+// validation banner is shown rather than a false alarm.
+const detectReceiptTotal = (text) => {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const totalLine = lines.find((l) =>
+    /^(ทั้งหมด|ยอดรวม|รวม(ทั้งหมด)?|grand\s*total|net\s*total|total)\b/i.test(l)
+  );
+  const m = totalLine && totalLine.match(PRICE_AT_END);
+  return m ? Number(m[1].replace(/,/g, "")) : null;
+};
+
+// VAT, service charge and discount lines are deliberately excluded from
+// the item parser above (SKIP_LINE) so they're never mistaken for a food
+// item — but that used to mean they were thrown away entirely, which is
+// exactly why a receipt's items never added up to its printed total.
+// This pulls each one's own amount off its own labeled line, the same
+// way detectReceiptTotal does, so Review can show them and the bill's
+// actual amount can include them instead of silently undercounting.
+const detectAmountByLabel = (text, labelRegex) => {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const line = lines.find((l) => labelRegex.test(l));
+  const m = line && line.match(PRICE_AT_END);
+  return m ? Number(m[1].replace(/,/g, "")) : null;
+};
+const VAT_LABEL = /^(vat\b|vatable\b|ภาษี)/i;
+const SERVICE_CHARGE_LABEL = /^(service\s*charge|ค่าบริการ)/i;
+const DISCOUNT_LABEL = /^(discount\b|ส่วนลด)/i;
+
 const parseReceiptText = (text) => {
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
   const items = [];
 
   // The grand total's own amount (when it's on the same line as its
   // label) gets excluded from ever being mistaken for an item's price.
-  const usedTotal = (() => {
-    const totalLine = lines.find((l) => /^(ทั้งหมด|ยอดรวม|รวม(ทั้งหมด)?|total)\b/i.test(l));
-    const m = totalLine && totalLine.match(PRICE_AT_END);
-    return m ? Number(m[1].replace(/,/g, "")) : null;
-  })();
+  const usedTotal = detectReceiptTotal(text);
 
   // Pass 1: same-line "name ... price".
   lines.forEach((line, i) => {
@@ -282,8 +313,21 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
   const [error, setError] = useState("");
   const [items, setItems] = useState([]);
   const [rawText, setRawText] = useState(""); // last OCR output, shown in a debug box below so it can be read/screenshotted straight off the phone — no DevTools needed
-  const [assignments, setAssignments] = useState({}); // { itemId: [names] }
-  const [paidBy, setPaidBy] = useState(userProfile?.name || tripMembers[0] || "");
+  const [assignments, setAssignments] = useState({}); // { itemId: [memberIds] }
+  // The receipt's own printed "Total" line, read independently of the
+  // item list — lets Review flag "your items don't add up to the
+  // receipt's total" before you save, instead of only noticing a missed
+  // or misread item later in Settlement.
+  const [detectedTotal, setDetectedTotal] = useState(null);
+  // VAT / service charge / discount, auto-detected from the receipt but
+  // editable — these apply to the WHOLE receipt, not any one item, so
+  // they're tracked separately and distributed proportionally across
+  // each resulting bill when saving (see groupedBills below).
+  const [extraCharges, setExtraCharges] = useState({ vat: 0, service: 0, discount: 0 });
+  // tripMembers is [{id, name}] — paidBy/assignments store ids now, not
+  // names, so this is the one place display names get resolved.
+  const nameOf = (id) => tripMembers.find((m) => m.id === id)?.name || id || "";
+  const [paidBy, setPaidBy] = useState(userProfile?.id || tripMembers[0]?.id || "");
   const fileInputCamera = useRef(null);
   const fileInputGallery = useRef(null);
 
@@ -307,6 +351,12 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
       // no DevTools or computer needed to see what Vision actually read.
       setRawText(data.text || "");
       const parsed = parseReceiptText(data.text || "");
+      setDetectedTotal(detectReceiptTotal(data.text || ""));
+      setExtraCharges({
+        vat: detectAmountByLabel(data.text || "", VAT_LABEL) || 0,
+        service: detectAmountByLabel(data.text || "", SERVICE_CHARGE_LABEL) || 0,
+        discount: detectAmountByLabel(data.text || "", DISCOUNT_LABEL) || 0,
+      });
       if (parsed.length === 0) {
         setError("Couldn't find any line items — you can add them manually below.");
       }
@@ -315,7 +365,8 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
       // the odd person out than to check everyone in, for a typical
       // group meal where most items are shared.
       const initialAssignments = {};
-      parsed.forEach((it) => { initialAssignments[it.id] = [...tripMembers]; });
+      const allMemberIds = tripMembers.map((m) => m.id);
+      parsed.forEach((it) => { initialAssignments[it.id] = [...allMemberIds]; });
       setAssignments(initialAssignments);
       setStage("review");
     } catch (err) {
@@ -324,6 +375,8 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
       setItems([]);
       setAssignments({});
       setRawText("");
+      setDetectedTotal(null);
+      setExtraCharges({ vat: 0, service: 0, discount: 0 });
       setStage("review");
     }
   };
@@ -344,7 +397,7 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
   const addBlankItem = () => {
     const id = `item-manual-${Date.now()}`;
     setItems((prev) => [...prev, { id, name: "", amount: 0 }]);
-    setAssignments((prev) => ({ ...prev, [id]: [...tripMembers] }));
+    setAssignments((prev) => ({ ...prev, [id]: tripMembers.map((m) => m.id) }));
   };
 
   const toggleAssignment = (itemId, member) => {
@@ -359,19 +412,61 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
 
   // Group items that share the exact same set of members into one bill
   // each — this is what keeps a 3-item receipt from becoming 3 separate
-  // bills when everyone actually shared everything.
+  // bills when everyone actually shared everything. Each group's
+  // `rawTotal` is just its own items; `total` additionally folds in its
+  // proportional share of VAT/service charge/discount (see
+  // netExtraCharge below), which is the amount actually saved as the
+  // bill.
+  const netExtraCharge =
+    (Number(extraCharges.vat) || 0) +
+    (Number(extraCharges.service) || 0) -
+    (Number(extraCharges.discount) || 0);
+
+  // Items get silently left out of groupedBills below when they have no
+  // name, no positive amount (zero, blank, or an accidental negative
+  // from the number input), or nobody assigned — this is exactly the
+  // kind of silent data loss "deleting all members from an item" or
+  // "zero-amount item" torture-testing turns up, so Confirm surfaces
+  // WHICH items were skipped and why, instead of the item just vanishing
+  // with no trace.
+  const skippedItems = React.useMemo(() => {
+    return items
+      .map((it) => {
+        const members = assignments[it.id] || [];
+        if (!it.name || !it.name.trim()) return { item: it, reason: "no name" };
+        if (!(Number(it.amount) > 0)) return { item: it, reason: "no amount" };
+        if (members.length === 0) return { item: it, reason: "no one assigned" };
+        return null;
+      })
+      .filter(Boolean);
+  }, [items, assignments]);
+
   const groupedBills = React.useMemo(() => {
     const groups = {};
     items.forEach((it) => {
       const members = (assignments[it.id] || []).slice().sort();
-      if (members.length === 0 || !it.name.trim() || !it.amount) return;
+      // Require a strictly positive amount (not just "truthy") so a
+      // mistyped negative number never quietly reduces a shared bill's
+      // total instead of being caught here.
+      if (members.length === 0 || !it.name.trim() || !(Number(it.amount) > 0)) return;
       const key = members.join("|");
-      if (!groups[key]) groups[key] = { members, items: [], total: 0 };
+      if (!groups[key]) groups[key] = { members, items: [], rawTotal: 0 };
       groups[key].items.push(it);
-      groups[key].total += Number(it.amount) || 0;
+      groups[key].rawTotal += Number(it.amount) || 0;
     });
-    return Object.values(groups);
-  }, [items, assignments]);
+    const allGroups = Object.values(groups);
+    // Distribute VAT/service charge/discount across groups in proportion
+    // to how much each group actually ordered — a group that ordered
+    // 80% of the items' value carries 80% of the VAT/service charge too,
+    // rather than splitting those charges equally regardless of who
+    // ordered what.
+    const itemsSum = allGroups.reduce((s, g) => s + g.rawTotal, 0);
+    allGroups.forEach((g) => {
+      const share = itemsSum > 0 ? g.rawTotal / itemsSum : 0;
+      g.total = Number((g.rawTotal + share * netExtraCharge).toFixed(2));
+    });
+    return allGroups;
+  }, [items, assignments, netExtraCharge]);
 
   const handleConfirm = () => {
     groupedBills.forEach((group) => {
@@ -389,7 +484,18 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
         sharedBy: group.members,
         status: "Pending",
         date: new Date().toLocaleDateString("en-GB"),
-        items: group.items.map((i) => ({ name: i.name, amount: Number(i.amount) || 0 })),
+        // Kept for a drill-down item breakdown in Bill Detail — the real
+        // item names/amounts aren't lost just because the bill itself is
+        // saved under one combined name+amount. If this group carries a
+        // share of VAT/service charge/discount, that share is appended
+        // as its own line so the breakdown still sums to the bill's
+        // total exactly, instead of leaving an unexplained gap.
+        items: [
+          ...group.items.map((i) => ({ name: i.name, amount: Number(i.amount) || 0 })),
+          ...(Math.abs(group.total - group.rawTotal) > 0.004
+            ? [{ name: "VAT / Service Charge / Discount", amount: Number((group.total - group.rawTotal).toFixed(2)) }]
+            : []),
+        ],
       });
     });
     setPage("receipt");
@@ -478,6 +584,7 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
               <input
                 className="ns-input"
                 type="number"
+                min="0"
                 style={{ width: 90, marginBottom: 0, textAlign: "right" }}
                 value={it.amount}
                 placeholder="0"
@@ -496,6 +603,79 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
           <button className="ns-btn ns-btn-dark" style={{ marginBottom: 14 }} onClick={addBlankItem}>
             + Add Item
           </button>
+
+          {/* ── Extra Charges — VAT, service charge, discount. Auto-read
+              off the receipt when found; always editable in case OCR
+              missed one or got the amount wrong. These apply to the
+              WHOLE receipt, so unlike items above they're not assigned
+              to specific people here — they get split across the bills
+              below in proportion to what each group actually ordered. ── */}
+          <div className="ns-section-label">Extra Charges</div>
+          <div className="ns-card" style={{ marginBottom: 14 }}>
+            {[
+              { key: "vat", label: "VAT", icon: "🧾" },
+              { key: "service", label: "Service Charge", icon: "🛎️" },
+              { key: "discount", label: "Discount", icon: "🏷️ −" },
+            ].map((row, i) => (
+              <div key={row.key} style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: i > 0 ? "10px 0 0" : "0 0 10px",
+                borderTop: i > 0 ? "1px solid var(--ns-border)" : "none",
+              }}>
+                <span style={{ fontSize: 13, flex: 1, color: "var(--ns-text2)" }}>{row.icon} {row.label}</span>
+                <input
+                  type="number"
+                  value={extraCharges[row.key] || ""}
+                  placeholder="0"
+                  onChange={(e) => setExtraCharges((prev) => ({ ...prev, [row.key]: Number(e.target.value) }))}
+                  style={{
+                    width: 90, padding: "6px 8px", borderRadius: 10, textAlign: "right",
+                    background: "var(--ns-card2)", border: "1px solid var(--ns-border)",
+                    color: "var(--ns-text)", fontFamily: "var(--ns-syne)", fontWeight: 700, fontSize: 13,
+                  }}
+                />
+              </div>
+            ))}
+            <div style={{ fontSize: 11, color: "var(--ns-muted)", marginTop: 10 }}>
+              Split across the bills below in proportion to what each group ordered.
+            </div>
+          </div>
+
+          {/* ── Total check — compares items + VAT + service charge −
+              discount against the receipt's OWN printed total, live as
+              you edit anything above, so a missed or misread item gets
+              caught here instead of surfacing later as a wrong
+              Settlement. A small gap can still be normal (a rounding
+              difference), so this informs rather than blocks — it never
+              disables Continue. ── */}
+          {items.length > 0 && detectedTotal != null && (() => {
+            const itemsSum = items.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+            const adjustedSum = Number((itemsSum + netExtraCharge).toFixed(2));
+            const diff = Number((detectedTotal - adjustedSum).toFixed(2));
+            const matches = Math.abs(diff) < 1;
+            return (
+              <div className="ns-card" style={{
+                marginBottom: 14,
+                border: `1px solid ${matches ? "color-mix(in srgb, var(--ns-g) 25%, transparent)" : "color-mix(in srgb, var(--ns-y) 30%, transparent)"}`,
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: matches ? 0 : 6 }}>
+                  <span style={{ fontSize: 12, color: "var(--ns-muted)" }}>
+                    {matches ? "✓ Matches the receipt total" : "⚠️ Doesn't match the receipt total"}
+                  </span>
+                  <span style={{ fontSize: 12, color: "var(--ns-text)" }}>
+                    {adjustedSum.toFixed(2)} / {detectedTotal.toFixed(2)} THB
+                  </span>
+                </div>
+                {!matches && (
+                  <div style={{ fontSize: 11, color: "var(--ns-muted)" }}>
+                    {diff > 0
+                      ? `Receipt total is ${diff.toFixed(2)} THB higher — check for a missed item or a VAT/service charge amount that's off.`
+                      : `${Math.abs(diff).toFixed(2)} THB more than the receipt total — check for a misread or duplicated item.`}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {rawText && (
             <details className="ns-card" style={{ marginBottom: 14, padding: 14 }}>
@@ -542,12 +722,12 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                 {tripMembers.map((m) => {
-                  const active = (assignments[it.id] || []).includes(m);
+                  const active = (assignments[it.id] || []).includes(m.id);
                   return (
                     <button
-                      key={m}
+                      key={m.id}
                       type="button"
-                      onClick={() => toggleAssignment(it.id, m)}
+                      onClick={() => toggleAssignment(it.id, m.id)}
                       style={{
                         padding: "6px 12px", borderRadius: 100, cursor: "pointer",
                         border: `1px solid ${active ? "color-mix(in srgb, var(--ns-g) 40%, transparent)" : "var(--ns-border)"}`,
@@ -556,7 +736,7 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
                         fontSize: 12, fontWeight: 600,
                       }}
                     >
-                      {active ? "✓ " : ""}{m}
+                      {active ? "✓ " : ""}{m.name}
                     </button>
                   );
                 })}
@@ -579,7 +759,7 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
           <div className="ns-card" style={{ marginBottom: 14 }}>
             <label className="ns-input-label">Paid By</label>
             <select className="ns-input" value={paidBy} onChange={(e) => setPaidBy(e.target.value)} style={{ marginBottom: 0 }}>
-              {tripMembers.map((m) => <option key={m} value={m}>{m}</option>)}
+              {tripMembers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
 
@@ -588,7 +768,27 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
           </div>
           <div style={{ fontSize: 12, color: "var(--ns-muted)", marginBottom: 12, marginTop: -8 }}>
             Items shared by the exact same people are combined into one bill.
+            {netExtraCharge !== 0 && " Each bill's amount includes its share of VAT/service charge/discount."}
           </div>
+
+          {/* Anything dropped from the bills below gets named here instead
+              of just disappearing — a blank/zero amount, no name, or
+              nobody assigned to split it. */}
+          {skippedItems.length > 0 && (
+            <div className="ns-card" style={{
+              marginBottom: 14, border: "1px solid color-mix(in srgb, var(--ns-r) 25%, transparent)",
+              background: "color-mix(in srgb, var(--ns-r) 6%, transparent)",
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ns-r)", marginBottom: 6 }}>
+                ⚠️ {skippedItems.length} item{skippedItems.length !== 1 ? "s" : ""} won't be saved
+              </div>
+              {skippedItems.map(({ item, reason }) => (
+                <div key={item.id} style={{ fontSize: 12, color: "var(--ns-muted)" }}>
+                  {item.name?.trim() || "(unnamed item)"} — {reason}
+                </div>
+              ))}
+            </div>
+          )}
 
           {groupedBills.length === 0 ? (
             <div className="ns-card" style={{ textAlign: "center", padding: 24, color: "var(--ns-muted)" }}>
@@ -605,7 +805,12 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
                     {group.total.toFixed(2)} THB
                   </span>
                 </div>
-                <div style={{ fontSize: 12, color: "var(--ns-muted)" }}>{group.members.join(" · ")}</div>
+                <div style={{ fontSize: 12, color: "var(--ns-muted)" }}>{group.members.map(nameOf).join(" · ")}</div>
+                {netExtraCharge !== 0 && (
+                  <div style={{ fontSize: 11, color: "var(--ns-muted)", marginTop: 2 }}>
+                    incl. {(group.total - group.rawTotal).toFixed(2)} THB of VAT/service/discount
+                  </div>
+                )}
               </div>
             ))
           )}

@@ -7,6 +7,13 @@ function Pay({ setPage, pointsEarned = 0, tripBills = [], tripMembers = [] }) {
   const [memberQRs, setMemberQRs]     = useState({});
   const [selectedMember, setSelected] = useState(null);
 
+  // tripMembers is [{id, name}] now — bill.paidBy/sharedBy already store
+  // ids. QR codes are still saved to localStorage keyed by NAME (a
+  // separate, device-local feature, untouched by the id refactor), so
+  // this is the one place a person's id gets turned back into their name
+  // to look their QR up.
+  const nameOf = (id) => tripMembers.find((m) => m.id === id)?.name || id || "";
+
   // โหลด QR จาก localStorage ของแต่ละ member
   useEffect(() => {
     const qrs = {};
@@ -25,10 +32,10 @@ function Pay({ setPage, pointsEarned = 0, tripBills = [], tripMembers = [] }) {
     setMemberQRs(qrs);
   }, []);
 
-  // หา creditors (คนที่ต้องรับเงิน) จาก bills
+  // หา creditors (คนที่ต้องรับเงิน) จาก bills — คำนวณด้วย id, แสดงผลด้วยชื่อ
   const creditors = React.useMemo(() => {
     const balances = {};
-    tripMembers.forEach((m) => { balances[m] = 0; });
+    tripMembers.forEach((m) => { balances[m.id] = 0; });
     tripBills.filter(b => b.status !== "Finished").forEach((bill) => {
       const amt = Number(bill.amount) || 0;
       const payer = bill.paidBy;
@@ -40,7 +47,7 @@ function Pay({ setPage, pointsEarned = 0, tripBills = [], tripMembers = [] }) {
     });
     return Object.entries(balances)
       .filter(([, bal]) => bal > 0.01)
-      .map(([name, amount]) => ({ name, amount: Number(amount.toFixed(2)) }))
+      .map(([id, amount]) => ({ id, name: nameOf(id), amount: Number(amount.toFixed(2)) }))
       .sort((a, b) => b.amount - a.amount);
   }, [tripBills, tripMembers]);
 
@@ -52,8 +59,9 @@ function Pay({ setPage, pointsEarned = 0, tripBills = [], tripMembers = [] }) {
     reader.readAsDataURL(file);
   };
 
-  const displayMember = selectedMember || creditors[0]?.name;
-  const displayQR = memberQRs[displayMember]?.qrImage;
+  const displayMemberId = selectedMember || creditors[0]?.id;
+  const displayMemberName = nameOf(displayMemberId);
+  const displayQR = memberQRs[displayMemberName]?.qrImage;
 
   return (
     <div className="ns-screen">
@@ -88,18 +96,18 @@ function Pay({ setPage, pointsEarned = 0, tripBills = [], tripMembers = [] }) {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {creditors.map((c) => (
               <button
-                key={c.name}
+                key={c.id}
                 type="button"
-                onClick={() => setSelected(c.name)}
+                onClick={() => setSelected(c.id)}
                 style={{
                   padding: "8px 14px", borderRadius: 100, cursor: "pointer",
-                  border: `1px solid ${displayMember === c.name ? "color-mix(in srgb, var(--ns-g) 40%, transparent)" : "var(--ns-border)"}`,
-                  background: displayMember === c.name ? "color-mix(in srgb, var(--ns-g) 10%, transparent)" : "var(--ns-card2)",
-                  color: displayMember === c.name ? "var(--ns-g)" : "var(--ns-text2)",
+                  border: `1px solid ${displayMemberId === c.id ? "color-mix(in srgb, var(--ns-g) 40%, transparent)" : "var(--ns-border)"}`,
+                  background: displayMemberId === c.id ? "color-mix(in srgb, var(--ns-g) 10%, transparent)" : "var(--ns-card2)",
+                  color: displayMemberId === c.id ? "var(--ns-g)" : "var(--ns-text2)",
                   fontSize: 13, fontWeight: 600,
                 }}
               >
-                {displayMember === c.name ? "✓ " : ""}{c.name}
+                {displayMemberId === c.id ? "✓ " : ""}{c.name}
                 <span style={{ fontSize: 11, opacity: 0.7, marginLeft: 6 }}>{c.amount.toLocaleString()} THB</span>
               </button>
             ))}
@@ -110,7 +118,7 @@ function Pay({ setPage, pointsEarned = 0, tripBills = [], tripMembers = [] }) {
       {/* QR Display */}
       <div className="ns-card" style={{ textAlign: "center", padding: "24px 20px", marginBottom: 14 }}>
         <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ns-muted)", marginBottom: 16 }}>
-          {displayMember ? `QR ของ ${displayMember}` : "Scan to Pay"}
+          {displayMemberId ? `QR ของ ${displayMemberName}` : "Scan to Pay"}
         </div>
 
         {displayQR ? (
@@ -128,9 +136,9 @@ function Pay({ setPage, pointsEarned = 0, tripBills = [], tripMembers = [] }) {
             <div style={{ fontSize: 13, color: "var(--ns-g)", fontWeight: 600 }}>
               Scan QR ด้วยแอปธนาคาร
             </div>
-            {creditors.find(c => c.name === displayMember) && (
+            {creditors.find(c => c.id === displayMemberId) && (
               <div style={{ fontFamily: "var(--ns-syne)", fontSize: 22, fontWeight: 800, color: "var(--ns-y)", marginTop: 8 }}>
-                {creditors.find(c => c.name === displayMember)?.amount.toLocaleString()} THB
+                {creditors.find(c => c.id === displayMemberId)?.amount.toLocaleString()} THB
               </div>
             )}
           </div>
@@ -146,10 +154,10 @@ function Pay({ setPage, pointsEarned = 0, tripBills = [], tripMembers = [] }) {
               📱
             </div>
             <div style={{ fontSize: 13, color: "var(--ns-muted)", marginBottom: 8 }}>
-              {displayMember ? `${displayMember} ยังไม่ได้อัปโหลด QR` : "ไม่มีข้อมูล QR"}
+              {displayMemberId ? `${displayMemberName} ยังไม่ได้อัปโหลด QR` : "ไม่มีข้อมูล QR"}
             </div>
             <div style={{ fontSize: 12, color: "var(--ns-muted)" }}>
-              ให้ {displayMember} ไปอัปโหลด QR ใน Profile ก่อนนะครับ
+              ให้ {displayMemberName} ไปอัปโหลด QR ใน Profile ก่อนนะครับ
             </div>
           </div>
         )}

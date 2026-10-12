@@ -25,17 +25,18 @@ import EditExpense from "./screens/Editexpense";
 import Navbar from "./components/Navbar";
 import ExportSummary from "./screens/ExportSummary";
 import LandingPage from "./screens/LandingPage";
+import GangSettings from "./screens/GangSettings";
 import { db, auth } from "./firebase";
 import { ref, onValue, set, remove, runTransaction, get } from "firebase/database";
 import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
 
-// Case/whitespace-tolerant name comparison. The rename cascade below
-// used to require an exact string match between your Profile name and a
-// trip member entry — a stray space or different capitalization (easy
-// to end up with when two different screens/people typed the "same"
-// name independently) silently skipped the whole cascade, leaving your
-// old name's bills/points orphaned as what looked like a second person.
+// Case/whitespace-tolerant name comparison — still useful in a couple of
+// places (matching the device profile's name against a trip member's
+// display name during migration/lookup), even though identity itself no
+// longer depends on name matching.
 const sameName = (a, b) => (a || "").trim().toLowerCase() === (b || "").trim().toLowerCase();
+
+const makeMemberId = () => `member-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
 const normalizeBill = (bill) => {
   const sharedBy = Array.isArray(bill.sharedBy) ? bill.sharedBy : [];
@@ -156,16 +157,70 @@ function App() {
   const { page, toast, editingExpense, selectedBill, selectedRedeem, showLanding } = ui;
 
   const [trip, dispatchTrip] = useReducer(tripReducer, initialTripState);
-  const { trips, currentTripId, currentTrip, tripBills, tripMembers, tripRewards, tripRedeems, tripMilestones } = trip;
+  // NOTE on identity: `tripMembers` is now an array of { id, name } objects,
+  // not plain name strings. `id` is permanent — generated once when a
+  // member is added (or, for your own device profile, reused from
+  // userProfile.id) and never changed by a rename. `name` is purely
+  // display text. Every place that used to store/compare a member by name
+  // (bill.paidBy, bill.sharedBy[], trip.creator, points keys, redeem
+  // requests) now stores/compares that member's id instead — a rename is
+  // just one field changing on one object, nothing else needs to move.
+  const { trips, currentTripId, currentTrip, tripBills, tripMembers } = trip;
+
+  // ── Gang: the persistent entity that owns rewards/points, spanning
+  // every trip linked to it (unlike tripMembers, which is just this ONE
+  // trip's roster for splitting bills). `currentTrip.gangId` is the link;
+  // every other gang-owned thing (its member list, rewards, redeem
+  // requests, milestones, points) is read from gangs/{gangId} as ONE
+  // snapshot below, instead of four separate trip-scoped listeners like
+  // before.
+  const currentGangId = currentTrip?.gangId || null;
+  const [gangData, setGangData] = useState(null);
+
+  useEffect(() => {
+    if (!authReady || !currentGangId) {
+      setGangData(null);
+      return;
+    }
+    const unsub = onValue(ref(db, `gangs/${currentGangId}`), (snap) => {
+      setGangData(snap.val() || null);
+    });
+    return () => unsub();
+  }, [authReady, currentGangId]);
+
+  const gangName = gangData?.name || "";
+  const gangCreatorId = gangData?.creatorId || "";
+  // Gang membership can be a SUPERSET of this trip's members (someone can
+  // be in the gang without having joined every trip under it) — this is
+  // what makes the leaderboard/rewards span multiple trips rather than
+  // resetting per trip.
+  const gangMembers = gangData?.members
+    ? Object.entries(gangData.members).map(([id, name]) => ({ id, name }))
+    : [];
+  const tripRewards = gangData?.rewards ? Object.values(gangData.rewards) : [];
+  const tripRedeems = gangData?.redeemRequests ? Object.values(gangData.redeemRequests) : [];
+  const tripMilestones = gangData?.milestones ? Object.values(gangData.milestones) : [];
+
+  // ── All gangs (for the picker shown when creating a new trip) ──
+  const [gangs, setGangs] = useState([]);
+  useEffect(() => {
+    if (!authReady) return;
+    const unsub = onValue(ref(db, "gangs"), (snap) => {
+      const data = snap.val();
+      setGangs(data ? Object.values(data) : []);
+    });
+    return () => unsub();
+  }, [authReady]);
 
   const [userPoints, setUserPoints] = useState(0);
   const [tripPoints, setTripPoints] = useState(0);
   // Custom Split's per-person target amounts for the trip's current
   // pending bills — set by Splitbill.jsx's Custom mode, consumed by
   // Settlement.jsx to compute real balances/transfers instead of its
-  // default equal-per-bill split. Cleared whenever it would go stale:
-  // after settling, or when the pending-bill set it was built against
-  // no longer matches (Settlement checks the total itself).
+  // default equal-per-bill split. Keyed by member id (not name). Cleared
+  // whenever it would go stale: after settling, or when the pending-bill
+  // set it was built against no longer matches (Settlement checks the
+  // total itself).
   const [customSplit, setCustomSplit] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [theme, setThemeState] = useState(() => {
@@ -264,18 +319,13 @@ function App() {
     }
   });
 
-  // ── Identity, phase 1 ──
-  // Today a person is identified ONLY by matching display-name strings
-  // (userProfile.name === a trip member, bill.paidBy === a name, …) — the
-  // exact design the "NongTaeyoung became a second person called Toey"
-  // bug comes from: rename the string anywhere it isn't an exact match
-  // and the old history gets orphaned instead of following you. A real
-  // fix needs a stable ID on every trip member, which touches most
-  // screens — this step only adds the one piece that's safe to add
-  // alone: a permanent ID for THIS device's own profile, generated once
-  // and never changed by a rename. Nothing reads it yet; it's here so
-  // the next phase (giving trip members the same treatment) has a
-  // stable anchor to work from instead of improvising one later.
+  // ── Identity: your own permanent id ──
+  // This device's own profile gets a permanent id, generated once and
+  // never changed by a rename. When you're a member of a trip, that
+  // trip's migration (below) links your member entry to this SAME id —
+  // so renaming yourself on Profile is just one field changing on one
+  // id, and every trip you're in sees it immediately, with nothing to
+  // orphan.
   useEffect(() => {
     if (userProfile?.id) return;
     setUserProfile((prev) => ({
@@ -284,6 +334,11 @@ function App() {
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userProfile?.id]);
+
+  // Convenience lookup passed down to every screen: resolve a member id
+  // back to its current display name. Falls back to the id itself (shows
+  // *something* rather than blank) if the member was removed.
+  const nameForId = (id) => tripMembers.find((m) => m.id === id)?.name || id || "";
 
   // ── Teams ──
   // A "Team" here is deliberately lightweight: just a saved member list
@@ -362,23 +417,20 @@ function App() {
       const data = snap.val();
       dispatchTrip({ type: "SET_TRIP_BILLS", bills: data ? Object.values(data).map(normalizeBill) : [] });
     });
+    // Members are stored as a flat { key: name } map in Firebase (the key
+    // is the member's permanent id once migrated — see the migration
+    // effect below). We turn that into the { id, name } objects every
+    // screen now works with.
     const unsubMembers = onValue(ref(db, `trips/${currentTripId}/members`), (snap) => {
       const data = snap.val();
-      dispatchTrip({ type: "SET_TRIP_MEMBERS", members: data ? Object.values(data) : [] });
+      const members = data ? Object.entries(data).map(([id, name]) => ({ id, name })) : [];
+      dispatchTrip({ type: "SET_TRIP_MEMBERS", members });
     });
-    const unsubRewards = onValue(ref(db, `trips/${currentTripId}/rewards`), (snap) => {
-      const data = snap.val();
-      dispatchTrip({ type: "SET_TRIP_REWARDS", rewards: data ? Object.values(data) : [] });
-    });
-    const unsubRedeems = onValue(ref(db, `trips/${currentTripId}/redeemRequests`), (snap) => {
-      const data = snap.val();
-      dispatchTrip({ type: "SET_TRIP_REDEEMS", redeems: data ? Object.values(data) : [] });
-    });
-    const unsubMilestones = onValue(ref(db, `trips/${currentTripId}/gangMilestones`), (snap) => {
-      const data = snap.val();
-      dispatchTrip({ type: "SET_TRIP_MILESTONES", milestones: data ? Object.values(data) : [] });
-    });
-    return () => { unsubTrip(); unsubBills(); unsubMembers(); unsubRewards(); unsubRedeems(); unsubMilestones(); };
+    // Rewards/redeemRequests/milestones/points no longer live under the
+    // trip at all — they're gang-owned now (see the gangData effect
+    // above), so this effect only needs the trip doc, its bills, and its
+    // own (trip-local) member roster.
+    return () => { unsubTrip(); unsubBills(); unsubMembers(); };
   }, [authReady, currentTripId]);
 
   // ── Load points ──
@@ -390,20 +442,22 @@ function App() {
     return () => unsub();
   }, [authReady]);
 
-  // "tripPoints" = Available Points for THIS trip — spendable, decreases
-  // when a reward redemption is confirmed. Separate from lifetime points,
-  // which live at memberLifetimePoints and only ever go up (read directly
-  // by Leaderboard.jsx for ranking + Gang Reward milestone progress).
+  // "tripPoints" = Reward Points — spendable, decreases when a reward
+  // redemption is confirmed. Shared across EVERY trip under the current
+  // gang now (not reset per trip), which is the whole point of the Gang
+  // system. Separate from lifetime points (memberLifetimePoints, also
+  // gang-scoped now), which only ever go up and drive Leaderboard rank +
+  // Gang Reward milestone progress. Keyed by your permanent id.
   useEffect(() => {
-    if (!authReady || !currentTripId || !userProfile?.name) {
+    if (!authReady || !currentGangId || !userProfile?.id) {
       setTripPoints(0);
       return;
     }
-    const unsub = onValue(ref(db, `trips/${currentTripId}/memberPoints/${userProfile.name}`), (snap) => {
+    const unsub = onValue(ref(db, `gangs/${currentGangId}/memberPoints/${userProfile.id}`), (snap) => {
       setTripPoints(Number(snap.val()) || 0);
     });
     return () => unsub();
-  }, [authReady, currentTripId, userProfile?.name]);
+  }, [authReady, currentGangId, userProfile?.id]);
 
   useEffect(() => {
     localStorage.setItem("neosplitProfile", JSON.stringify(userProfile));
@@ -417,46 +471,59 @@ function App() {
 
   // ── Points ──
   // Every point-earning action credits THREE pools now:
-  //  1. Global XP (userPoints) — lifetime across all trips, drives Level.
-  //  2. Trip Lifetime Points (memberLifetimePoints) — lifetime within
-  //     THIS trip, never decreases. Drives Leaderboard rank and the Gang
-  //     Reward milestone progress.
-  //  3. Trip Available Points (memberPoints) — spendable within this
-  //     trip, decreases when a reward redemption is confirmed.
+  //  1. Global XP (userPoints) — lifetime across ALL gangs/trips, drives Level.
+  //  2. Gang Lifetime Points (memberLifetimePoints) — lifetime within
+  //     THIS GANG (spans every trip linked to it), never decreases.
+  //     Drives Leaderboard rank and the Gang Reward milestone progress.
+  //  3. Gang Reward Points (memberPoints) — spendable within this gang,
+  //     decreases when a reward redemption is confirmed.
   // (1) and (2) are permanent records of what was earned; only (3) is a
   // spendable balance. This is what keeps "I redeemed a reward" from
-  // ever knocking someone down the leaderboard.
+  // ever knocking someone down the leaderboard. Pools (2) and (3) are
+  // gang-scoped, not trip-scoped — earning points on ANY trip under a
+  // gang adds to the SAME pool, which is the whole point of Gangs.
   const addPoints = (pts) => {
     setUserPoints((prev) => {
       const updated = Math.max(0, prev + pts);
       set(ref(db, "userPoints"), updated);
       return updated;
     });
-    if (currentTripId && userProfile?.name) {
-      runTransaction(ref(db, `trips/${currentTripId}/memberPoints/${userProfile.name}`), (current) => {
+    if (currentGangId && userProfile?.id) {
+      runTransaction(ref(db, `gangs/${currentGangId}/memberPoints/${userProfile.id}`), (current) => {
         return Math.max(0, (current || 0) + pts);
       });
-      runTransaction(ref(db, `trips/${currentTripId}/memberLifetimePoints/${userProfile.name}`), (current) => {
+      runTransaction(ref(db, `gangs/${currentGangId}/memberLifetimePoints/${userProfile.id}`), (current) => {
         return Math.max(0, (current || 0) + pts);
       });
     }
   };
 
   // ── Trip actions ──
+  // `newTrip.memberList` is expected to be an array of { id, name } now
+  // (CreateTrip.jsx generates an id for every member it adds, reusing
+  // userProfile.id for yourself) — written straight into the trip's
+  // id-keyed members map. `newTrip.gangId` is REQUIRED going forward —
+  // CreateTrip.jsx always resolves one first (an existing gang the
+  // person picked, or a brand-new one it just created) — so a new trip
+  // never has to go through the old auto-migration path at all; that
+  // path only exists for trips that were created before Gangs existed.
   const addTrip = (newTrip) => {
     if (!authReady) {
       setToast("Still connecting… try again in a second");
       return;
     }
     const id = Date.now().toString();
-    const tripObj = { id, ...newTrip };
+    const { memberList, ...rest } = newTrip;
+    const tripObj = { id, ...rest };
     set(ref(db, `trips/${id}`), tripObj).catch((err) => {
       console.error("Failed to save trip:", err);
       setToast("Couldn't save trip — check your connection");
     });
-    if (newTrip.memberList?.length > 0) {
+    if (memberList?.length > 0) {
       const membersObj = {};
-      newTrip.memberList.forEach((m, i) => { membersObj[i] = m; });
+      memberList.forEach((m) => {
+        if (m?.id && m?.name) membersObj[m.id] = m.name;
+      });
       set(ref(db, `trips/${id}/members`), membersObj).catch((err) => {
         console.error("Failed to save trip members:", err);
       });
@@ -482,30 +549,47 @@ function App() {
     setPage("tripdetail");
   };
 
-  // ── Gang Rewards (per-trip, creator-only creation) ──
+  // ── Gang Rewards (owned by the GANG now, not any one trip — creator
+  // here means the gang's creator, gatekept by the screens that call
+  // this using gangCreatorId) ──
   const addReward = ({ name, icon, points, description }) => {
-    if (!currentTripId) return;
+    if (!currentGangId) return;
     const id = Date.now().toString();
     const reward = {
       id, name, icon: icon || "🎁", points: Number(points) || 0,
       description: description || "",
     };
-    set(ref(db, `trips/${currentTripId}/rewards/${id}`), reward).catch((err) => {
+    set(ref(db, `gangs/${currentGangId}/rewards/${id}`), reward).catch((err) => {
       console.error("Failed to save reward:", err);
       setToast("Couldn't save reward");
     });
     setToast("Reward created 🎉");
   };
 
-  // ── Gang Reward milestones (per-trip, creator-only) ──
+  // Deleting a reward only removes it from the list people can redeem
+  // NEW requests against — it's safe even if people already redeemed it,
+  // because every redeem request stores its own snapshot of the reward's
+  // name/icon/points at the moment it was requested (see requestRedeem
+  // below), never a live reference back to the reward itself. So past
+  // "Pending"/"Confirmed" requests keep displaying correctly forever,
+  // with nothing left dangling.
+  const deleteReward = (id) => {
+    if (!currentGangId) return;
+    remove(ref(db, `gangs/${currentGangId}/rewards/${id}`)).catch((err) => {
+      console.error("Failed to delete reward:", err);
+      setToast("Couldn't delete reward");
+    });
+  };
+
+  // ── Gang Reward milestones (owned by the GANG now) ──
   const addGangMilestone = ({ threshold, label, desc }) => {
-    if (!currentTripId) return;
+    if (!currentGangId) return;
     const id = Date.now().toString();
     const milestone = {
       id, threshold: Number(threshold) || 0,
       label: label || "🎉 Milestone", desc: desc || "",
     };
-    set(ref(db, `trips/${currentTripId}/gangMilestones/${id}`), milestone).catch((err) => {
+    set(ref(db, `gangs/${currentGangId}/milestones/${id}`), milestone).catch((err) => {
       console.error("Failed to save milestone:", err);
       setToast("Couldn't save milestone");
     });
@@ -513,18 +597,24 @@ function App() {
   };
 
   const deleteGangMilestone = (id) => {
-    if (!currentTripId) return;
-    remove(ref(db, `trips/${currentTripId}/gangMilestones/${id}`)).catch((err) => {
+    if (!currentGangId) return;
+    remove(ref(db, `gangs/${currentGangId}/milestones/${id}`)).catch((err) => {
       console.error("Failed to delete milestone:", err);
     });
   };
 
+  // Redeem requests reference the requester by id now (memberId). A
+  // `memberName` is still stored alongside it — purely a display snapshot
+  // of the name at the moment the request was made, never read for
+  // identity/math — so Rewards/YourRedeem can show a label without every
+  // screen needing a live id→name lookup.
   const requestRedeem = (reward) => {
-    if (!currentTripId || !userProfile?.name) return;
+    if (!currentGangId || !userProfile?.id) return;
     const id = Date.now().toString();
     const request = {
       id,
-      memberName: userProfile.name,
+      memberId: userProfile.id,
+      memberName: userProfile.name || "",
       rewardId: reward.id,
       rewardName: reward.name,
       icon: reward.icon,
@@ -532,25 +622,32 @@ function App() {
       status: "Pending",
       requestedAt: id,
     };
-    set(ref(db, `trips/${currentTripId}/redeemRequests/${id}`), request).catch((err) => {
+    set(ref(db, `gangs/${currentGangId}/redeemRequests/${id}`), request).catch((err) => {
       console.error("Failed to request redeem:", err);
       setToast("Couldn't send request");
     });
     setToast("Redeem requested — waiting for confirmation ⏳");
   };
 
-  // Creator-only: deducts points from the trip's AVAILABLE pool only —
+  // Creator-only: deducts points from the gang's AVAILABLE pool only —
   // memberLifetimePoints (rank/milestones) is never touched here.
   const confirmRedeem = (redeemId) => {
-    if (!currentTripId) return;
+    if (!currentGangId) return;
     const request = tripRedeems.find((r) => r.id === redeemId);
     if (!request || request.status === "Confirmed") return;
+    const memberKey = request.memberId || request.memberName; // fallback for any request made before this refactor
 
-    runTransaction(ref(db, `trips/${currentTripId}/memberPoints/${request.memberName}`), (current) => {
-      return (current || 0) - request.points;
+    // Clamped at 0 — someone can file several "Pending" requests whose
+    // points each individually fit their balance at request time, but
+    // whose total doesn't once more than one actually gets confirmed
+    // (e.g. two 80-pt requests against a 100-pt balance). Without this,
+    // confirming the second one would push their balance negative
+    // instead of just landing at 0.
+    runTransaction(ref(db, `gangs/${currentGangId}/memberPoints/${memberKey}`), (current) => {
+      return Math.max(0, (current || 0) - request.points);
     }).then(() => {
-      set(ref(db, `trips/${currentTripId}/redeemRequests/${redeemId}/status`), "Confirmed");
-      setToast(`Confirmed ${request.memberName}'s redeem ✓`);
+      set(ref(db, `gangs/${currentGangId}/redeemRequests/${redeemId}/status`), "Confirmed");
+      setToast(`Confirmed ${request.memberName || nameForId(memberKey)}'s redeem ✓`);
     }).catch((err) => {
       console.error("Failed to confirm redeem:", err);
       setToast("Couldn't confirm redeem");
@@ -558,15 +655,18 @@ function App() {
   };
 
   // ── Expense actions ──
+  // `newExpense.paidBy` / `.sharedBy` are member ids now, supplied by
+  // whichever screen built the expense (AddExpense.jsx, ScanReceipt.jsx).
   const addExpense = (newExpense) => {
     if (!currentTripId) return;
-    const sharedBy = newExpense.sharedBy?.length > 0 ? newExpense.sharedBy : tripMembers;
+    const allIds = tripMembers.map((m) => m.id);
+    const sharedBy = newExpense.sharedBy?.length > 0 ? newExpense.sharedBy : allIds;
     const id = Date.now();
     const bill = {
       id,
       name: newExpense.name || "Untitled Expense",
       amount: Number(newExpense.amount) || 0,
-      paidBy: newExpense.paidBy || tripMembers[0],
+      paidBy: newExpense.paidBy || allIds[0] || "",
       pax: sharedBy.length,
       category: newExpense.category || "Other",
       date: newExpense.date || new Date().toLocaleDateString("en-GB"),
@@ -580,11 +680,18 @@ function App() {
 
   const deleteExpense = (id) => {
     if (!currentTripId) return;
-    // Reverses the +2 pts that bill earned when it was added — without
-    // this, add → delete → add → delete farms free points forever.
-    addPoints(-2);
+    // Reverses whatever points this specific bill actually earned: +2
+    // for being added, PLUS +10 more if it was already settled
+    // (Settlement.jsx awards +10/bill on settle, via onSettleAndEarnPoints
+    // in the router below). Without checking status here, deleting an
+    // already-settled bill only used to undo the +2 "add" bonus — the
+    // +10 settle bonus stayed, forever, which is free points on tap:
+    // add a bill, settle it (+10), delete it, repeat.
+    const bill = tripBills.find((b) => b.id === id);
+    const wasSettled = bill?.status === "Finished";
+    addPoints(wasSettled ? -12 : -2);
     remove(ref(db, `trips/${currentTripId}/bills/${id}`));
-    setToast("Expense deleted");
+    setToast(wasSettled ? "Settled expense deleted — points reversed" : "Expense deleted");
   };
 
   const startEditExpense = (expense) => {
@@ -621,207 +728,368 @@ function App() {
   };
 
   // ── Member actions ──
-  const addMember = (name) => {
-    const trimmed = name.trim();
-    if (!trimmed || tripMembers.includes(trimmed)) return;
-    const newMembers = [...tripMembers, trimmed];
-    const membersObj = {};
-    newMembers.forEach((m, i) => { membersObj[i] = m; });
-    if (currentTripId) set(ref(db, `trips/${currentTripId}/members`), membersObj);
+  // Every member now has a permanent id. Renaming is just one field on
+  // one id (editMember) — no cascade across bills/points/creator needed
+  // anymore, because none of those store the name itself.
+  // `explicitId`: lets a caller (AddExpense.jsx, say) generate the id
+  // itself first and pass it in, so it can use that same id immediately
+  // in its own local state (adding the new person straight into "Shared
+  // By") instead of waiting for Firebase's realtime listener to echo the
+  // write back. Returns the id that was actually used either way.
+  const addMember = (name, explicitId = null) => {
+    const trimmed = (name || "").trim();
+    if (!trimmed || !currentTripId) return null;
+    if (tripMembers.some((m) => sameName(m.name, trimmed))) {
+      setToast("That name is already used");
+      return null;
+    }
+    const id = explicitId || makeMemberId();
+    set(ref(db, `trips/${currentTripId}/members/${id}`), trimmed).catch((err) => {
+      console.error("Failed to add member:", err);
+    });
+    return id;
   };
 
-  const editMember = (oldName, newName) => {
-    const trimmed = newName.trim();
-    if (!trimmed || trimmed === oldName || !currentTripId) return;
+  const editMember = (memberId, newName) => {
+    const trimmed = (newName || "").trim();
+    if (!trimmed || !currentTripId) return;
+    const existing = tripMembers.find((m) => m.id === memberId);
+    if (!existing || existing.name === trimmed) return;
 
     const isDuplicate = tripMembers.some(
-      (m) => !sameName(m, oldName) && sameName(m, trimmed)
+      (m) => m.id !== memberId && sameName(m.name, trimmed)
     );
     if (isDuplicate) {
       setToast("That name is already used");
       return;
     }
 
-    const tripId = currentTripId;
-    const newMembers = tripMembers.map((m) => (m === oldName ? trimmed : m));
-    const membersObj = {};
-    newMembers.forEach((m, i) => { membersObj[i] = m; });
-    set(ref(db, `trips/${tripId}/members`), membersObj);
-
-    // Trip creator is also stored as a plain name, separate from the
-    // members list — if the creator renames themself, they'd otherwise
-    // silently lose creator-only controls (Edit Milestones, Create
-    // Reward, Confirm Redeem, Reset Leaderboard) on this trip.
-    if (currentTrip?.creator === oldName) {
-      set(ref(db, `trips/${tripId}/creator`), trimmed);
-    }
+    set(ref(db, `trips/${currentTripId}/members/${memberId}`), trimmed);
 
     // Your own device profile name is stored separately from trip
-    // membership — if you rename yourself as a member, keep it in sync
-    // too, or the app stops recognizing you as "You" (Leaderboard
-    // highlight, isCreator checks) on this trip.
-    if (userProfile?.name === oldName) {
+    // membership — if your trip member entry gets renamed (e.g. by
+    // someone editing the list), keep your own Profile display name in
+    // sync too, since it's the same id.
+    if (userProfile?.id === memberId) {
       setUserProfile((prev) => ({ ...prev, name: trimmed }));
     }
-
-    tripBills.forEach((bill) => {
-      let changed = false;
-      const updated = { ...bill };
-      if (updated.paidBy === oldName) {
-        updated.paidBy = trimmed;
-        changed = true;
-      }
-      if (Array.isArray(updated.sharedBy) && updated.sharedBy.includes(oldName)) {
-        updated.sharedBy = updated.sharedBy.map((n) => (n === oldName ? trimmed : n));
-        changed = true;
-      }
-      if (changed) {
-        set(ref(db, `trips/${tripId}/bills/${updated.id}`), updated);
-      }
-    });
-
-    // Firebase has no atomic "rename a key" operation — a rename is a
-    // read-then-write-then-delete. Points are name-keyed today (not
-    // member IDs), so without this cascade a rename would silently
-    // orphan the old name's history and start the new name back at
-    // zero — exactly the "renaming creates a new person" bug this
-    // exists to prevent.
-    const moveKey = (path) => {
-      get(ref(db, `${path}/${oldName}`)).then((snap) => {
-        if (snap.exists()) {
-          set(ref(db, `${path}/${trimmed}`), snap.val());
-          remove(ref(db, `${path}/${oldName}`));
-        }
-      }).catch((err) => console.error(`Failed to move ${path}:`, err));
-    };
-    moveKey(`trips/${tripId}/memberPoints`);
-    moveKey(`trips/${tripId}/memberLifetimePoints`);
-
-    // Redeem requests reference the member by name in a field, not as
-    // a key — just patch that field on any request that matches.
-    tripRedeems.forEach((req) => {
-      if (req.memberName === oldName) {
-        set(ref(db, `trips/${tripId}/redeemRequests/${req.id}/memberName`), trimmed);
-      }
-    });
 
     setToast(`Renamed to ${trimmed}`);
   };
 
-  const removeMember = (name) => {
-    const newMembers = tripMembers.filter((m) => m !== name);
-    const membersObj = {};
-    newMembers.forEach((m, i) => { membersObj[i] = m; });
-    if (currentTripId) set(ref(db, `trips/${currentTripId}/members`), membersObj);
+  const removeMember = (memberId) => {
+    if (!currentTripId) return;
+    remove(ref(db, `trips/${currentTripId}/members/${memberId}`)).catch((err) => {
+      console.error("Failed to remove member:", err);
+    });
   };
 
-  // Renaming yourself on the Profile screen used to be completely
-  // disconnected from everything else — your profile name would change,
-  // but any trip you're already a member of still had your OLD name in
-  // its member list, bills (paidBy/sharedBy), creator field and points,
-  // so nothing looked "linked". This reuses the exact same cascading
-  // rename as editMember (above) for the currently active trip, so
-  // saving a new name on Profile instantly (via Firebase's realtime
-  // listeners — no refresh needed) renames you everywhere that trip
-  // already references you. It still always updates the profile name
-  // itself even with no active trip, since editMember requires one.
+  // Renaming yourself on the Profile screen: your profile name and your
+  // trip member entry are the SAME id now, so this is just two writes to
+  // the same value — no searching for a matching name, nothing to
+  // orphan. If you don't have a member entry on the current trip yet
+  // (e.g. you were invited but haven't been added), only your profile
+  // name changes.
   const renameProfile = (newName) => {
     const trimmed = (newName || "").trim();
-    if (!trimmed) return;
-    const oldName = userProfile?.name;
-    // Match tolerantly (sameName), but cascade using the member entry's
-    // OWN exact string — editMember reads/writes Firebase keys by that
-    // exact string, so passing the possibly-differently-cased profile
-    // name through here instead would just recreate the same bug.
-    const existingMember = currentTripId ? tripMembers.find((m) => sameName(m, oldName)) : null;
-    if (existingMember && !sameName(existingMember, trimmed)) {
-      editMember(existingMember, trimmed);
+    if (!trimmed || !userProfile?.id) return;
+    const existingMember = currentTripId ? tripMembers.find((m) => m.id === userProfile.id) : null;
+    if (existingMember && existingMember.name !== trimmed) {
+      editMember(userProfile.id, trimmed);
     }
     setUserProfile((prev) => ({ ...prev, name: trimmed }));
   };
 
-  // Merges a duplicate member's ENTIRE history into another member's.
-  // Unlike editMember (a forward-looking rename of one name to another),
-  // this SUMS points instead of overwriting — both names represent real
-  // accumulated history of the same person, so neither side should be
-  // discarded. Used by the one-time cleanup below, and reusable later
-  // from a screen if another duplicate like this ever turns up again.
-  const mergeMembers = (keepName, mergeName) => {
-    if (!currentTripId || !keepName || !mergeName || sameName(keepName, mergeName)) return;
+  // Merges a duplicate member's ENTIRE history into another member's —
+  // for the rare case where the same real person ends up with two
+  // different ids (e.g. added themselves twice, or old data). Unlike
+  // editMember (renaming one id), this SUMS points instead of
+  // overwriting, since both ids represent real accumulated history of
+  // the same person, and reassigns every bill/redeem reference from the
+  // merged id to the kept id.
+  const mergeMembers = (keepId, mergeId) => {
+    if (!currentTripId || !keepId || !mergeId || keepId === mergeId) return;
     const tripId = currentTripId;
 
-    const newMembers = tripMembers.filter((m) => !sameName(m, mergeName));
-    if (!newMembers.some((m) => sameName(m, keepName))) newMembers.push(keepName);
-    const membersObj = {};
-    newMembers.forEach((m, i) => { membersObj[i] = m; });
-    set(ref(db, `trips/${tripId}/members`), membersObj);
+    remove(ref(db, `trips/${tripId}/members/${mergeId}`));
 
-    if (sameName(currentTrip?.creator, mergeName)) {
-      set(ref(db, `trips/${tripId}/creator`), keepName);
+    // If the merged id was ALSO separately in the gang's own member
+    // list (not just this trip's), fold that in too — otherwise the two
+    // ids would still show up as two different people on the gang
+    // leaderboard even after this merge.
+    if (currentGangId && gangMembers.some((m) => m.id === mergeId)) {
+      remove(ref(db, `gangs/${currentGangId}/members/${mergeId}`));
+      if (!gangMembers.some((m) => m.id === keepId)) {
+        const keptName = tripMembers.find((m) => m.id === keepId)?.name
+          || gangMembers.find((m) => m.id === mergeId)?.name || "";
+        if (keptName) set(ref(db, `gangs/${currentGangId}/members/${keepId}`), keptName);
+      }
+      if (gangCreatorId === mergeId) {
+        set(ref(db, `gangs/${currentGangId}/creatorId`), keepId);
+      }
     }
-    if (sameName(userProfile?.name, mergeName)) {
-      setUserProfile((prev) => ({ ...prev, name: keepName }));
+
+    if (currentTrip?.creator === mergeId) {
+      set(ref(db, `trips/${tripId}/creator`), keepId);
+    }
+    if (userProfile?.id === mergeId) {
+      setUserProfile((prev) => ({ ...prev, id: keepId }));
     }
 
     tripBills.forEach((bill) => {
       let changed = false;
       const updated = { ...bill };
-      if (sameName(updated.paidBy, mergeName)) { updated.paidBy = keepName; changed = true; }
-      if (Array.isArray(updated.sharedBy) && updated.sharedBy.some((n) => sameName(n, mergeName))) {
+      if (updated.paidBy === mergeId) { updated.paidBy = keepId; changed = true; }
+      if (Array.isArray(updated.sharedBy) && updated.sharedBy.includes(mergeId)) {
         updated.sharedBy = Array.from(new Set(
-          updated.sharedBy.map((n) => (sameName(n, mergeName) ? keepName : n))
+          updated.sharedBy.map((id) => (id === mergeId ? keepId : id))
         ));
         changed = true;
       }
       if (changed) set(ref(db, `trips/${tripId}/bills/${updated.id}`), updated);
     });
 
-    tripRedeems.forEach((req) => {
-      if (sameName(req.memberName, mergeName)) {
-        set(ref(db, `trips/${tripId}/redeemRequests/${req.id}/memberName`), keepName);
-      }
-    });
+    // Redeem requests live under the GANG now, not the trip.
+    if (currentGangId) {
+      tripRedeems.forEach((req) => {
+        if ((req.memberId || req.memberName) === mergeId) {
+          set(ref(db, `gangs/${currentGangId}/redeemRequests/${req.id}/memberId`), keepId);
+        }
+      });
+    }
 
-    // Points are the one place a merge differs from a plain rename — add
-    // the two balances together instead of letting the second write
-    // clobber the first, since both are real points earned by the same
-    // person under two different names.
+    // Points are the one place a merge differs from a plain reassignment
+    // — add the two balances together instead of letting the second
+    // write clobber the first, since both are real points earned by the
+    // same person under two different ids. These pools are gang-scoped
+    // now, not trip-scoped.
     const sumKey = (path) => {
       Promise.all([
-        get(ref(db, `${path}/${keepName}`)),
-        get(ref(db, `${path}/${mergeName}`)),
+        get(ref(db, `${path}/${keepId}`)),
+        get(ref(db, `${path}/${mergeId}`)),
       ]).then(([keepSnap, mergeSnap]) => {
         const total = (Number(keepSnap.val()) || 0) + (Number(mergeSnap.val()) || 0);
-        set(ref(db, `${path}/${keepName}`), total);
-        remove(ref(db, `${path}/${mergeName}`));
+        set(ref(db, `${path}/${keepId}`), total);
+        remove(ref(db, `${path}/${mergeId}`));
       }).catch((err) => console.error(`Failed to merge ${path}:`, err));
     };
-    sumKey(`trips/${tripId}/memberPoints`);
-    sumKey(`trips/${tripId}/memberLifetimePoints`);
+    if (currentGangId) {
+      sumKey(`gangs/${currentGangId}/memberPoints`);
+      sumKey(`gangs/${currentGangId}/memberLifetimePoints`);
+    }
 
-    setToast(`Merged ${mergeName} into ${keepName} ✓`);
+    setToast("Merged duplicate member ✓");
   };
 
-  // ── One-time cleanup for a known duplicate ──
-  // "NongTaeyoung" (an old name) and "Toey" (the same person's current
-  // name) ended up as two separate member entries with separate point
-  // histories — exactly the bug the Identity work above exists to catch
-  // earlier next time. This merges that specific pair, once, the first
-  // time a trip is loaded with both names still in its member list. A
-  // flag on the trip stops it from ever running a second time (so it's
-  // safe even if this effect re-fires on every reload).
+  // ── Gang management ──
+  // A Gang is the persistent entity that owns rewards/points and spans
+  // every trip linked to it. `createGang` generates its id client-side
+  // (same pattern as every other id in this app) so the CALLER (e.g.
+  // CreateTrip.jsx) gets the id back immediately and can use it in the
+  // very same action — e.g. writing it onto a brand-new trip — without
+  // waiting on a round-trip to Firebase first.
+  const createGang = (name, memberList = []) => {
+    const trimmed = (name || "").trim();
+    if (!authReady || !trimmed) return null;
+    const id = `gang-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const membersObj = {};
+    memberList.forEach((m) => {
+      if (m?.id && m?.name) membersObj[m.id] = m.name;
+    });
+    const gang = {
+      id,
+      name: trimmed,
+      creatorId: userProfile?.id || "",
+      members: membersObj,
+    };
+    set(ref(db, `gangs/${id}`), gang).catch((err) => {
+      console.error("Failed to create gang:", err);
+      setToast("Couldn't create gang");
+    });
+    return id;
+  };
+
+  // Gang membership is independent of any one trip's roster — someone
+  // can be in the gang (and show up on its leaderboard/rewards) without
+  // having joined every trip under it.
+  const addGangMember = (gangId, name) => {
+    const trimmed = (name || "").trim();
+    if (!trimmed || !gangId) return null;
+    const alreadyIn = gangMembers.some((m) => sameName(m.name, trimmed));
+    if (alreadyIn) {
+      setToast("That name is already in this gang");
+      return null;
+    }
+    const id = makeMemberId();
+    set(ref(db, `gangs/${gangId}/members/${id}`), trimmed).catch((err) => {
+      console.error("Failed to add gang member:", err);
+    });
+    return id;
+  };
+
+  const removeGangMember = (gangId, memberId) => {
+    if (!gangId) return;
+    remove(ref(db, `gangs/${gangId}/members/${memberId}`)).catch((err) => {
+      console.error("Failed to remove gang member:", err);
+    });
+  };
+
+  const renameGang = (gangId, newName) => {
+    const trimmed = (newName || "").trim();
+    if (!gangId || !trimmed) return;
+    set(ref(db, `gangs/${gangId}/name`), trimmed).catch((err) => {
+      console.error("Failed to rename gang:", err);
+    });
+    setToast("Gang renamed ✓");
+  };
+
+  // ── One-time migration: name-based identity → permanent member ids ──
+  // Until now, every trip member was identified purely by their display
+  // name string — bills, points, the creator field and redeem requests
+  // all stored that name directly. That's the root cause behind a whole
+  // family of bugs (a renamed member's history getting orphaned as a
+  // "new" person being the one you already hit). This migration runs
+  // ONCE per trip, the first time that trip loads under this version:
+  // it gives every current member a permanent random id, then rewrites
+  // every bill, points record, the creator field, and every redeem
+  // request to reference that id instead of the name — preserving all
+  // existing history. A flag on the trip (`migrations/memberIdsV2`)
+  // makes this safe to leave running on every load; it only ever does
+  // real work the first time.
+  //
+  // Your own device profile's id is reused as the member id for whichever
+  // current member matches your profile's name — so going forward,
+  // "you" on this trip and "you" on your device Profile are provably the
+  // same id, and a future rename can never split them apart again.
   useEffect(() => {
-    if (!authReady || !currentTripId) return;
-    if (!tripMembers.some((m) => sameName(m, "NongTaeyoung"))) return;
-    if (!tripMembers.some((m) => sameName(m, "Toey"))) return;
-    const flagRef = ref(db, `trips/${currentTripId}/migrations/mergedNongTaeyoungIntoToey`);
-    get(flagRef).then((snap) => {
-      if (snap.exists()) return;
-      mergeMembers("Toey", "NongTaeyoung");
-      set(flagRef, true);
-    }).catch((err) => console.error("Merge check failed:", err));
+    if (!authReady || !currentTripId || !currentTrip) return;
+    if (!userProfile?.id) return; // wait for your own id to exist first
+
+    const flagRef = ref(db, `trips/${currentTripId}/migrations/memberIdsV2`);
+    get(flagRef).then((flagSnap) => {
+      if (flagSnap.exists()) return; // already migrated
+
+      Promise.all([
+        get(ref(db, `trips/${currentTripId}/members`)),
+        get(ref(db, `trips/${currentTripId}/bills`)),
+        get(ref(db, `trips/${currentTripId}/memberPoints`)),
+        get(ref(db, `trips/${currentTripId}/memberLifetimePoints`)),
+        get(ref(db, `trips/${currentTripId}/redeemRequests`)),
+      ]).then(([membersSnap, billsSnap, pointsSnap, lifetimeSnap, redeemsSnap]) => {
+        const oldMembers = membersSnap.val() || {}; // { oldKey: name }
+        const oldNames = Object.values(oldMembers).filter(Boolean);
+        if (oldNames.length === 0) {
+          // Nothing to migrate yet (empty trip) — just set the flag so
+          // this doesn't keep re-checking forever.
+          set(flagRef, true);
+          return;
+        }
+
+        // name → new permanent id. Your own name gets your own stable
+        // profile id; everyone else gets a freshly generated one.
+        const nameToId = {};
+        const newMembersObj = {};
+        oldNames.forEach((name) => {
+          if (nameToId[name]) return; // dedupe exact-duplicate name entries
+          const id = sameName(name, userProfile?.name) ? userProfile.id : makeMemberId();
+          nameToId[name] = id;
+          newMembersObj[id] = name;
+        });
+
+        set(ref(db, `trips/${currentTripId}/members`), newMembersObj);
+
+        if (currentTrip?.creator && nameToId[currentTrip.creator]) {
+          set(ref(db, `trips/${currentTripId}/creator`), nameToId[currentTrip.creator]);
+        }
+
+        const oldBills = billsSnap.val() || {};
+        Object.values(oldBills).forEach((bill) => {
+          const updated = { ...bill };
+          let changed = false;
+          if (updated.paidBy && nameToId[updated.paidBy]) {
+            updated.paidBy = nameToId[updated.paidBy];
+            changed = true;
+          }
+          if (Array.isArray(updated.sharedBy)) {
+            const mapped = updated.sharedBy.map((n) => nameToId[n] || n);
+            if (mapped.some((v, i) => v !== updated.sharedBy[i])) {
+              updated.sharedBy = mapped;
+              changed = true;
+            }
+          }
+          if (changed) set(ref(db, `trips/${currentTripId}/bills/${updated.id}`), updated);
+        });
+
+        const remapPointsNode = (path, snapVal) => {
+          const data = snapVal || {};
+          const remapped = {};
+          Object.entries(data).forEach(([name, value]) => {
+            const id = nameToId[name] || name;
+            remapped[id] = (remapped[id] || 0) + (Number(value) || 0);
+          });
+          set(ref(db, path), remapped);
+        };
+        remapPointsNode(`trips/${currentTripId}/memberPoints`, pointsSnap.val());
+        remapPointsNode(`trips/${currentTripId}/memberLifetimePoints`, lifetimeSnap.val());
+
+        const oldRedeems = redeemsSnap.val() || {};
+        Object.values(oldRedeems).forEach((req) => {
+          if (req.memberId) return; // already in new shape
+          const id = nameToId[req.memberName] || req.memberName;
+          set(ref(db, `trips/${currentTripId}/redeemRequests/${req.id}/memberId`), id);
+        });
+
+        set(flagRef, true);
+      }).catch((err) => console.error("Member-id migration failed:", err));
+    }).catch((err) => console.error("Migration flag check failed:", err));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authReady, currentTripId, tripMembers]);
+  }, [authReady, currentTripId, !!currentTrip, userProfile?.id]);
+
+  // ── One-time migration: trip-owned rewards/points → Gang-owned ──
+  // Before Gangs existed, every trip owned its own rewards/points, reset
+  // to zero by the next trip. This runs ONCE per trip that doesn't have
+  // a gangId yet: it creates a brand-new Gang (named after the trip),
+  // copies that trip's existing members/rewards/redeemRequests/
+  // milestones/points into it untouched, then links the trip to it. A
+  // NEW trip never hits this path at all — CreateTrip.jsx always
+  // resolves a gangId (existing or freshly created) before the trip is
+  // even saved, same spirit as the member-id migration above.
+  useEffect(() => {
+    if (!authReady || !currentTripId || !currentTrip) return;
+    if (currentTrip.gangId) return; // already linked to a gang
+
+    const flagRef = ref(db, `trips/${currentTripId}/migrations/gangV1`);
+    get(flagRef).then((flagSnap) => {
+      if (flagSnap.exists()) return; // already migrated (gangId write just hasn't echoed back yet)
+
+      Promise.all([
+        get(ref(db, `trips/${currentTripId}/members`)),
+        get(ref(db, `trips/${currentTripId}/rewards`)),
+        get(ref(db, `trips/${currentTripId}/redeemRequests`)),
+        get(ref(db, `trips/${currentTripId}/gangMilestones`)),
+        get(ref(db, `trips/${currentTripId}/memberPoints`)),
+        get(ref(db, `trips/${currentTripId}/memberLifetimePoints`)),
+      ]).then(([membersSnap, rewardsSnap, redeemsSnap, milestonesSnap, pointsSnap, lifetimeSnap]) => {
+        const gangId = `gang-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+        const gang = {
+          id: gangId,
+          name: currentTrip.title ? `${currentTrip.title} Gang` : "My Gang",
+          creatorId: currentTrip.creator || userProfile?.id || "",
+          members: membersSnap.val() || {},
+          memberPoints: pointsSnap.val() || {},
+          memberLifetimePoints: lifetimeSnap.val() || {},
+          rewards: rewardsSnap.val() || {},
+          redeemRequests: redeemsSnap.val() || {},
+          milestones: milestonesSnap.val() || {},
+        };
+        set(ref(db, `gangs/${gangId}`), gang).then(() => {
+          set(ref(db, `trips/${currentTripId}/gangId`), gangId);
+          set(flagRef, true);
+        });
+      }).catch((err) => console.error("Gang migration failed:", err));
+    }).catch((err) => console.error("Gang migration flag check failed:", err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authReady, currentTripId, !!currentTrip, currentTrip?.gangId, userProfile?.id]);
 
   // ── Edit Trip ──
   const updateTripDetails = ({ title, date, location }) => {
@@ -841,6 +1109,27 @@ function App() {
     setPage("edittrip");
   };
 
+  // Lets the current device claim "creator" status on a trip that has
+  // none recorded, or whose creator id no longer matches anyone (e.g.
+  // very old trips created before the creator field existed). Creator
+  // now stores a member id, so claiming just needs you to already be a
+  // member — if you aren't yet, this adds you first using your own
+  // permanent id so you're never a second, disconnected copy of
+  // yourself.
+  const claimTripCreator = () => {
+    if (!currentTripId || !userProfile?.id) return;
+    const alreadyMember = tripMembers.some((m) => m.id === userProfile.id);
+    if (!alreadyMember && userProfile.name) {
+      set(ref(db, `trips/${currentTripId}/members/${userProfile.id}`), userProfile.name.trim());
+    }
+    set(ref(db, `trips/${currentTripId}/creator`), userProfile.id).then(() => {
+      setToast(`You're now the creator of this trip ✓`);
+    }).catch((err) => {
+      console.error("Failed to claim creator:", err);
+      setToast("Couldn't update creator");
+    });
+  };
+
   // ── Invite link ──
   const getInviteLink = () => {
     if (!currentTripId) return "";
@@ -853,8 +1142,8 @@ function App() {
     switch (page) {
       case "splash":          return <Splash setPage={setPage} />;
       case "home":            return <Home {...p} userProfile={userProfile} trips={trips} currentTripId={currentTripId} selectTrip={selectTrip} deleteTrip={deleteTrip} openEditTrip={openEditTrip} />;
-      case "create":          return <CreateTrip setPage={setPage} addTrip={addTrip} userProfile={userProfile} teams={teams} addTeam={addTeam} />;
-      case "edittrip":        return <EditTrip setPage={setPage} currentTrip={currentTrip} tripMembers={tripMembers} tripBills={tripBills} updateTripDetails={updateTripDetails} addMember={addMember} removeMember={removeMember} editMember={editMember} />;
+      case "create":          return <CreateTrip setPage={setPage} addTrip={addTrip} userProfile={userProfile} teams={teams} addTeam={addTeam} gangs={gangs} createGang={createGang} />;
+      case "edittrip":        return <EditTrip setPage={setPage} currentTrip={currentTrip} tripMembers={tripMembers} tripBills={tripBills} userProfile={userProfile} updateTripDetails={updateTripDetails} addMember={addMember} removeMember={removeMember} editMember={editMember} claimTripCreator={claimTripCreator} />;
       case "tripdetail":      return <TripDetail {...p} deleteExpense={deleteExpense} startEditExpense={startEditExpense} deleteTrip={deleteTrip} currentTrip={currentTrip} currentTripId={currentTripId} getInviteLink={getInviteLink} />;
       case "addexpense":      return <AddExpense {...p} addExpense={addExpense} addMember={addMember} removeMember={removeMember} editMember={editMember} />;
       case "scanreceipt":     return <ScanReceipt {...p} addExpense={addExpense} userProfile={userProfile} />;
@@ -867,9 +1156,10 @@ function App() {
       case "splitcalculator": return <SplitCalculator setPage={setPage} selectedBill={selectedBill} />;
       case "profile":         return <Profile setPage={setPage} userProfile={userProfile} setUserProfile={setUserProfile} renameProfile={renameProfile} theme={theme} setTheme={setTheme} />;
       case "trophy":
-      case "leaderboard":     return <Leaderboard setPage={setPage} authReady={authReady} currentTripId={currentTripId} currentTrip={currentTrip} userProfile={userProfile} tripMembers={tripMembers} tripMilestones={tripMilestones} addGangMilestone={addGangMilestone} deleteGangMilestone={deleteGangMilestone} />;
-      case "mypoints":        return <MyPoints setPage={setPage} userPoints={userPoints} />;
-      case "rewardslist":     return <Rewards setPage={setPage} userPoints={tripPoints} tripRewards={tripRewards} tripRedeems={tripRedeems} currentTrip={currentTrip} userProfile={userProfile} requestRedeem={requestRedeem} confirmRedeem={confirmRedeem} setSelectedRedeem={setSelectedRedeem} />;
+      case "leaderboard":     return <Leaderboard setPage={setPage} authReady={authReady} currentGangId={currentGangId} gangName={gangName} gangCreatorId={gangCreatorId} currentTrip={currentTrip} userProfile={userProfile} tripMembers={tripMembers} gangMembers={gangMembers} tripMilestones={tripMilestones} addGangMilestone={addGangMilestone} deleteGangMilestone={deleteGangMilestone} />;
+      case "gangsettings":    return <GangSettings setPage={setPage} currentGangId={currentGangId} gangName={gangName} gangCreatorId={gangCreatorId} gangMembers={gangMembers} userProfile={userProfile} addGangMember={addGangMember} removeGangMember={removeGangMember} renameGang={renameGang} />;
+      case "mypoints":        return <MyPoints setPage={setPage} userPoints={userPoints} tripPoints={tripPoints} currentTrip={currentTrip} gangName={gangName} />;
+      case "rewardslist":     return <Rewards setPage={setPage} userPoints={tripPoints} tripRewards={tripRewards} tripRedeems={tripRedeems} currentTrip={currentTrip} gangCreatorId={gangCreatorId} userProfile={userProfile} requestRedeem={requestRedeem} confirmRedeem={confirmRedeem} deleteReward={deleteReward} setSelectedRedeem={setSelectedRedeem} />;
       case "createreward":    return <CreateReward setPage={setPage} addReward={addReward} />;
       case "yourredeem":      return <YourRedeem setPage={setPage} selectedRedeem={selectedRedeem} />;
       case "pay":             return <Pay setPage={setPage} pointsEarned={userPoints} tripBills={tripBills} tripMembers={tripMembers} />;

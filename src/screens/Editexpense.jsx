@@ -39,10 +39,13 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
 
   useEffect(() => {
     if (editingExpense) {
+      // tripMembers is [{id, name}] now; paidBy/sharedBy on the bill are
+      // ids, so the fallback (no sharedBy saved yet) needs ids too.
+      const allMemberIds = tripMembers.map((m) => m.id);
       const initialSharedBy =
         editingExpense.sharedBy?.length > 0
           ? editingExpense.sharedBy
-          : tripMembers.slice(0, editingExpense.pax || tripMembers.length);
+          : allMemberIds.slice(0, editingExpense.pax || allMemberIds.length);
       setExpenseName(editingExpense.name || "");
       setAmount(editingExpense.amount || "");
       setPaidBy(editingExpense.paidBy || "");
@@ -96,6 +99,22 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
         <div style={{ width: 36 }} />
       </div>
 
+      {/* This bill already went through Settlement — Settlement itself
+          isn't a frozen record, just a live calculation off whatever's
+          saved here, so changing the amount/payer/participants now
+          quietly changes what that past settlement "was" too. Not
+          blocked (there's no reason it has to be), just flagged. */}
+      {editingExpense?.status === "Finished" && (
+        <div style={{
+          padding: "10px 14px", marginBottom: 14, borderRadius: 12,
+          background: "color-mix(in srgb, var(--ns-y) 10%, transparent)",
+          border: "1px solid color-mix(in srgb, var(--ns-y) 25%, transparent)",
+          fontSize: 12, color: "var(--ns-text)",
+        }}>
+          ⚠️ This bill was already settled. Changes here won't undo or redo any points, and will change what the past settlement looked like.
+        </div>
+      )}
+
       <div className="ns-card">
 
         {/* Expense Name */}
@@ -147,7 +166,7 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
           <select className="ns-input" value={paidBy} onChange={(e) => setPaidBy(e.target.value)}>
             <option value="">Select payer</option>
             {tripMembers.map((m) => (
-              <option key={m} value={m}>{m}</option>
+              <option key={m.id} value={m.id}>{m.name}</option>
             ))}
           </select>
           {errors.paidBy && (
@@ -185,18 +204,18 @@ function EditExpense({ setPage, editingExpense, updateExpense, tripMembers = [] 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {tripMembers.map((m) => (
               <button
-                key={m}
+                key={m.id}
                 type="button"
-                onClick={() => toggleMember(m)}
+                onClick={() => toggleMember(m.id)}
                 style={{
                   padding: "7px 14px", borderRadius: 100,
-                  border: `1px solid ${sharedBy.includes(m) ? "rgba(0,255,133,0.4)" : "var(--ns-border)"}`,
-                  background: sharedBy.includes(m) ? "rgba(0,255,133,0.1)" : "var(--ns-card2)",
-                  color: sharedBy.includes(m) ? "var(--ns-g)" : "var(--ns-text2)",
+                  border: `1px solid ${sharedBy.includes(m.id) ? "rgba(0,255,133,0.4)" : "var(--ns-border)"}`,
+                  background: sharedBy.includes(m.id) ? "rgba(0,255,133,0.1)" : "var(--ns-card2)",
+                  color: sharedBy.includes(m.id) ? "var(--ns-g)" : "var(--ns-text2)",
                   fontSize: 12, fontWeight: 600, cursor: "pointer",
                 }}
               >
-                {sharedBy.includes(m) ? "✓ " : ""}{m}
+                {sharedBy.includes(m.id) ? "✓ " : ""}{m.name}
               </button>
             ))}
           </div>

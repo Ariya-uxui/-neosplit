@@ -22,15 +22,22 @@ const CATEGORIES = [
   { id: "Other", icon: "💸" },
 ];
 
+// Used only to pre-generate a new member's id locally, so it can be added
+// straight into this screen's own `paidBy`/`sharedBy` state (both of
+// which now hold member ids, not names) without waiting for Firebase's
+// listener to echo the write back.
+const makeMemberId = () => `member-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
 function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMember, editMember }) {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
-  const [paidBy, setPaidBy] = useState(tripMembers[0] || "");
+  const [paidBy, setPaidBy] = useState(tripMembers[0]?.id || "");
   const [category, setCategory] = useState("Food");
   const [date, setDate] = useState(todayInput());
-  const [sharedBy, setSharedBy] = useState([...tripMembers]);
+  const [sharedBy, setSharedBy] = useState(tripMembers.map((m) => m.id));
   const [newMemberName, setNewMemberName] = useState("");
   const [showAddMember, setShowAddMember] = useState(false);
+  const [addMemberError, setAddMemberError] = useState("");
   const [editingMember, setEditingMember] = useState(null);
   const [editValue, setEditValue] = useState("");
   const [editError, setEditError] = useState("");
@@ -38,21 +45,33 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
   const handleAddMember = () => {
     const trimmed = newMemberName.trim();
     if (!trimmed) return;
-    if (addMember) addMember(trimmed);
-    setSharedBy((prev) => [...prev, trimmed]);
-    if (!paidBy) setPaidBy(trimmed);
+    const newId = makeMemberId();
+    // addMember returns null (and shows its own toast) when the name is
+    // already taken — without checking that, a duplicate name used to
+    // still get added to sharedBy/paidBy as a "ghost" id with no actual
+    // member behind it (App.jsx's write was rejected, but this screen
+    // didn't know that), so the bill would end up split with a
+    // participant that doesn't exist anywhere.
+    const addedId = addMember ? addMember(trimmed, newId) : newId;
+    if (!addedId) {
+      setAddMemberError("That name is already in this trip");
+      return;
+    }
+    setSharedBy((prev) => [...prev, addedId]);
+    if (!paidBy) setPaidBy(addedId);
     setNewMemberName("");
+    setAddMemberError("");
     setShowAddMember(false);
   };
 
   const handleRemoveMember = (member) => {
-    if (removeMember) removeMember(member);
-    setSharedBy((prev) => prev.filter((m) => m !== member));
-    if (paidBy === member) {
-      const remaining = tripMembers.filter((m) => m !== member);
-      setPaidBy(remaining[0] || "");
+    if (removeMember) removeMember(member.id);
+    setSharedBy((prev) => prev.filter((id) => id !== member.id));
+    if (paidBy === member.id) {
+      const remaining = tripMembers.filter((m) => m.id !== member.id);
+      setPaidBy(remaining[0]?.id || "");
     }
-    if (editingMember === member) {
+    if (editingMember === member.id) {
       setEditingMember(null);
       setEditValue("");
       setEditError("");
@@ -60,8 +79,8 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
   };
 
   const startEditMember = (member) => {
-    setEditingMember(member);
-    setEditValue(member);
+    setEditingMember(member.id);
+    setEditValue(member.name);
     setEditError("");
   };
 
@@ -78,25 +97,23 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
       return;
     }
     const isDuplicate = tripMembers.some(
-      (m) => m !== editingMember && m.toLowerCase() === trimmed.toLowerCase()
+      (m) => m.id !== editingMember && m.name.toLowerCase() === trimmed.toLowerCase()
     );
     if (isDuplicate) {
       setEditError("That name is already used");
       return;
     }
-    if (trimmed !== editingMember) {
-      if (editMember) editMember(editingMember, trimmed);
-      setSharedBy((prev) => prev.map((m) => (m === editingMember ? trimmed : m)));
-      if (paidBy === editingMember) setPaidBy(trimmed);
-    }
+    if (editMember) editMember(editingMember, trimmed);
+    // sharedBy/paidBy hold ids, which don't change on a rename — only the
+    // displayed name (resolved live from tripMembers) changes.
     setEditingMember(null);
     setEditValue("");
     setEditError("");
   };
 
-  const toggleMember = (member) =>
+  const toggleMember = (id) =>
     setSharedBy((prev) =>
-      prev.includes(member) ? prev.filter((m) => m !== member) : [...prev, member]
+      prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]
     );
 
   const handleSubmit = (e) => {
@@ -193,8 +210,8 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
               onChange={(e) => setPaidBy(e.target.value)}
             >
               {tripMembers.map((m) => (
-                <option key={m} value={m}>
-                  {m}
+                <option key={m.id} value={m.id}>
+                  {m.name}
                 </option>
               ))}
             </select>
@@ -215,9 +232,9 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
 
               <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 8 }}>
                 {tripMembers.map((m) =>
-                  editingMember === m ? (
+                  editingMember === m.id ? (
                     <div
-                      key={m}
+                      key={m.id}
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -246,6 +263,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
                           }
                         }}
                         autoFocus
+                        maxLength={40}
                         style={{
                           width: 92,
                           padding: "4px 8px",
@@ -293,7 +311,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
                     </div>
                   ) : (
                     <div
-                      key={m}
+                      key={m.id}
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -312,7 +330,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
                         title="Tap to rename"
                         style={{ cursor: "pointer" }}
                       >
-                        {m}
+                        {m.name}
                       </span>
                       <button
                         type="button"
@@ -359,7 +377,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
                     className="ns-input"
                     style={{ flex: 1, marginBottom: 0 }}
                     value={newMemberName}
-                    onChange={(e) => setNewMemberName(e.target.value)}
+                    onChange={(e) => { setNewMemberName(e.target.value); setAddMemberError(""); }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
@@ -367,6 +385,7 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
                       }
                     }}
                     placeholder="Enter name..."
+                    maxLength={40}
                     autoFocus
                   />
                   <button
@@ -386,6 +405,11 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
                   >
                     Add ✓
                   </button>
+                </div>
+              )}
+              {addMemberError && (
+                <div style={{ fontSize: 11, color: "var(--ns-r)", marginTop: 6 }}>
+                  {addMemberError}
                 </div>
               )}
 
@@ -434,22 +458,22 @@ function AddExpense({ setPage, addExpense, tripMembers = [], addMember, removeMe
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {tripMembers.map((m) => (
                 <button
-                  key={m}
+                  key={m.id}
                   type="button"
-                  onClick={() => toggleMember(m)}
+                  onClick={() => toggleMember(m.id)}
                   style={{
                     padding: "7px 14px",
                     borderRadius: 100,
-                    border: `1px solid ${sharedBy.includes(m) ? "color-mix(in srgb, var(--ns-g) 40%, transparent)" : "var(--ns-border)"}`,
-                    background: sharedBy.includes(m) ? "color-mix(in srgb, var(--ns-g) 10%, transparent)" : "var(--ns-card2)",
-                    color: sharedBy.includes(m) ? "var(--ns-g)" : "var(--ns-text2)",
+                    border: `1px solid ${sharedBy.includes(m.id) ? "color-mix(in srgb, var(--ns-g) 40%, transparent)" : "var(--ns-border)"}`,
+                    background: sharedBy.includes(m.id) ? "color-mix(in srgb, var(--ns-g) 10%, transparent)" : "var(--ns-card2)",
+                    color: sharedBy.includes(m.id) ? "var(--ns-g)" : "var(--ns-text2)",
                     fontSize: 12,
                     fontWeight: 600,
                     cursor: "pointer",
                   }}
                 >
-                  {sharedBy.includes(m) ? "✓ " : ""}
-                  {m}
+                  {sharedBy.includes(m.id) ? "✓ " : ""}
+                  {m.name}
                 </button>
               ))}
             </div>

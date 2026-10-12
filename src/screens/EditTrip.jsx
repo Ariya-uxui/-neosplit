@@ -11,13 +11,15 @@ function EditTrip({ setPage, currentTrip, tripMembers = [], tripBills = [], user
   const [editError, setEditError] = useState("");
   const [errors, setErrors] = useState({});
 
-  const memberHasData = (name) =>
-    tripBills.some((b) => b.paidBy === name || (Array.isArray(b.sharedBy) && b.sharedBy.includes(name)));
+  // tripMembers is now an array of { id, name } — every lookup/compare
+  // below works off the permanent id, never the (renameable) name.
+  const memberHasData = (id) =>
+    tripBills.some((b) => b.paidBy === id || (Array.isArray(b.sharedBy) && b.sharedBy.includes(id)));
 
   const handleAddMember = () => {
     const trimmed = memberInput.trim();
     if (!trimmed) return;
-    if (tripMembers.includes(trimmed)) {
+    if (tripMembers.some((m) => m.name.toLowerCase() === trimmed.toLowerCase())) {
       setEditError("That name is already in this trip");
       return;
     }
@@ -26,25 +28,25 @@ function EditTrip({ setPage, currentTrip, tripMembers = [], tripBills = [], user
     setEditError("");
   };
 
-  const handleRemoveMember = (name) => {
-    if (memberHasData(name)) {
+  const handleRemoveMember = (member) => {
+    if (memberHasData(member.id)) {
       const ok = window.confirm(
-        `${name} has existing expenses in this trip.\n\nRemoving them may affect settlement calculations. Their past bills and points stay on record — they just won't be listed as a trip member anymore.\n\nRemove anyway?`
+        `${member.name} has existing expenses in this trip.\n\nRemoving them may affect settlement calculations. Their past bills and points stay on record — they just won't be listed as a trip member anymore.\n\nRemove anyway?`
       );
       if (!ok) return;
     } else {
-      if (!window.confirm(`Remove ${name} from this trip?`)) return;
+      if (!window.confirm(`Remove ${member.name} from this trip?`)) return;
     }
-    removeMember(name);
-    if (editingMember === name) {
+    removeMember(member.id);
+    if (editingMember === member.id) {
       setEditingMember(null);
       setEditValue("");
     }
   };
 
   const startEditMember = (member) => {
-    setEditingMember(member);
-    setEditValue(member);
+    setEditingMember(member.id);
+    setEditValue(member.name);
     setEditError("");
   };
 
@@ -61,15 +63,13 @@ function EditTrip({ setPage, currentTrip, tripMembers = [], tripBills = [], user
       return;
     }
     const isDuplicate = tripMembers.some(
-      (m) => m !== editingMember && m.toLowerCase() === trimmed.toLowerCase()
+      (m) => m.id !== editingMember && m.name.toLowerCase() === trimmed.toLowerCase()
     );
     if (isDuplicate) {
       setEditError("That name is already used");
       return;
     }
-    if (trimmed !== editingMember) {
-      editMember(editingMember, trimmed);
-    }
+    editMember(editingMember, trimmed);
     setEditingMember(null);
     setEditValue("");
     setEditError("");
@@ -91,11 +91,12 @@ function EditTrip({ setPage, currentTrip, tripMembers = [], tripBills = [], user
   };
 
   // Lets you recover creator access on a trip whose stored "creator"
-  // field never matched your profile name (e.g. an older trip created
-  // before the auto-add-yourself logic existed, or after a rename that
-  // predates the cascading-rename fix). Also makes sure you're listed
-  // as a member, since a trip's creator should always be part of it.
-  const isAlreadyCreator = !!currentTrip?.creator && currentTrip.creator === userProfile?.name;
+  // field (a member id) doesn't match your own permanent id — e.g. an
+  // older trip created before the auto-add-yourself logic existed, or a
+  // trip whose creator field predates this id-based system entirely.
+  // Also makes sure you're listed as a member, since a trip's creator
+  // should always be part of it.
+  const isAlreadyCreator = !!currentTrip?.creator && currentTrip.creator === userProfile?.id;
   const handleClaimCreator = () => {
     if (!userProfile?.name) return;
     const ok = window.confirm(
@@ -145,8 +146,10 @@ function EditTrip({ setPage, currentTrip, tripMembers = [], tripBills = [], user
           </div>
           <div style={{ fontSize: 12, color: "var(--ns-muted)", marginBottom: 10 }}>
             This trip's creator is currently{" "}
-            <strong style={{ color: "var(--ns-text2)" }}>{currentTrip?.creator || "not set"}</strong>,
-            which doesn't match your profile name ({userProfile.name}). That's why you can't
+            <strong style={{ color: "var(--ns-text2)" }}>
+              {tripMembers.find((m) => m.id === currentTrip?.creator)?.name || "not set"}
+            </strong>,
+            which isn't you ({userProfile.name}). That's why you can't
             edit milestones or confirm redeems here.
           </div>
           <button
@@ -174,6 +177,7 @@ function EditTrip({ setPage, currentTrip, tripMembers = [], tripBills = [], user
             onChange={(e) => setMemberInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddMember(); } }}
             style={{ flex: 1 }}
+            maxLength={40}
           />
           <button
             type="button"
@@ -190,9 +194,9 @@ function EditTrip({ setPage, currentTrip, tripMembers = [], tripBills = [], user
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
           {tripMembers.map((m) =>
-            editingMember === m ? (
+            editingMember === m.id ? (
               <div
-                key={m}
+                key={m.id}
                 style={{
                   display: "flex", alignItems: "center", gap: 6,
                   padding: "4px 6px 4px 10px", borderRadius: 100,
@@ -208,6 +212,7 @@ function EditTrip({ setPage, currentTrip, tripMembers = [], tripBills = [], user
                     if (e.key === "Escape") { e.preventDefault(); cancelEditMember(); }
                   }}
                   autoFocus
+                  maxLength={40}
                   style={{ width: 92, padding: "4px 8px", fontSize: 12, marginBottom: 0, borderRadius: 100 }}
                 />
                 <button type="button" onClick={saveEditMember} title="Save" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ns-g)", fontSize: 15, lineHeight: 1, padding: 0 }}>✓</button>
@@ -215,7 +220,7 @@ function EditTrip({ setPage, currentTrip, tripMembers = [], tripBills = [], user
               </div>
             ) : (
               <div
-                key={m}
+                key={m.id}
                 style={{
                   display: "flex", alignItems: "center", gap: 5,
                   padding: "5px 10px 5px 12px", borderRadius: 100,
@@ -224,7 +229,7 @@ function EditTrip({ setPage, currentTrip, tripMembers = [], tripBills = [], user
                 }}
               >
                 <span onClick={() => startEditMember(m)} title="Tap to rename" style={{ cursor: "pointer" }}>
-                  {m}{memberHasData(m) ? " •" : ""}
+                  {m.name}{memberHasData(m.id) ? " •" : ""}
                 </span>
                 <button
                   type="button"

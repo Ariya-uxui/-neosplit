@@ -14,45 +14,63 @@ const toDisplayDate = (iso) => {
   return `${d}/${m}/${y}`;
 };
 
-function CreateTrip({ setPage, addTrip, userProfile, teams = [], addTeam }) {
+// Member identity: every member is a permanent { id, name } pair, not a
+// plain name string. Your own entry reuses userProfile.id (the device's
+// own permanent id) so this new trip's "you" is provably the same person
+// as your Profile from the moment the trip is created — nothing to link
+// up later, nothing to orphan on a future rename.
+const makeMemberId = () => `member-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+function CreateTrip({ setPage, addTrip, userProfile, gangs = [], createGang }) {
   const creatorName = userProfile?.name?.trim();
+  const creatorId = userProfile?.id;
   const [tripName, setTripName] = useState("");
   const [date, setDate] = useState(todayInput());
   const [location, setLocation] = useState("");
   const [memberInput, setMemberInput] = useState("");
-  const [members, setMembers] = useState(() => (creatorName ? [creatorName] : []));
+  const [members, setMembers] = useState(() =>
+    creatorName && creatorId ? [{ id: creatorId, name: creatorName }] : []
+  );
   const [errors, setErrors] = useState({});
+
+  // ── Gang: every trip belongs to exactly one, so this is resolved
+  // right here before the trip is even saved — either "use one that
+  // already exists" (picking it pre-fills the member list from the
+  // gang's REAL member ids, so points/rewards earned here land on the
+  // same people as their other trips) or "start a brand-new one" (the
+  // default — a solo/first trip just gets its own 1-trip gang, same as
+  // before Gangs existed, just explicit now).
+  const [gangMode, setGangMode] = useState(gangs.length > 0 ? "existing" : "new");
+  const [selectedGangId, setSelectedGangId] = useState("");
+  const [newGangName, setNewGangName] = useState("");
+
+  const applyGang = (gang) => {
+    const members_ = gang.members
+      ? Object.entries(gang.members).map(([id, name]) => ({ id, name }))
+      : [];
+    const hasSelf = creatorId && members_.some((m) => m.id === creatorId);
+    const finalMembers = hasSelf || !creatorName
+      ? members_
+      : [...members_, { id: creatorId, name: creatorName }];
+    setMembers(finalMembers);
+    setSelectedGangId(gang.id);
+    setErrors((e) => ({ ...e, members: "", gang: "" }));
+  };
 
   const addMember = () => {
     const name = memberInput.trim();
     if (!name) return;
-    if (members.includes(name)) {
+    if (members.some((m) => m.name === name)) {
       setErrors(e => ({ ...e, member: "มีชื่อนี้แล้วครับ" }));
       return;
     }
-    setMembers(prev => [...prev, name]);
+    setMembers(prev => [...prev, { id: makeMemberId(), name }]);
     setMemberInput("");
     setErrors(e => ({ ...e, member: "" }));
   };
 
-  const removeMember = (name) => {
-    setMembers(prev => prev.filter(m => m !== name));
-  };
-
-  // NOTE: named applyTeam (not "useTeam") on purpose — any function whose
-  // name starts with "use" is treated by React's ESLint rules as a Hook,
-  // which then breaks because it's called inside an onClick callback.
-  const applyTeam = (team) => {
-    const merged = Array.from(new Set([...(creatorName ? [creatorName] : []), ...team.memberList]));
-    setMembers(merged);
-    setErrors(e => ({ ...e, members: "" }));
-  };
-
-  const saveAsTeam = () => {
-    if (members.length === 0) return;
-    const name = window.prompt("Name this team (e.g. \"Bangkok Gang\"):", "");
-    if (!name || !name.trim()) return;
-    if (addTeam) addTeam({ name, memberList: members });
+  const removeMember = (id) => {
+    setMembers(prev => prev.filter(m => m.id !== id));
   };
 
   const validate = () => {
@@ -61,6 +79,7 @@ function CreateTrip({ setPage, addTrip, userProfile, teams = [], addTeam }) {
     if (!date.trim()) e.date = "Please enter trip date";
     if (!location.trim()) e.location = "Please enter location";
     if (members.length === 0) e.members = "Please add at least 1 member";
+    if (gangMode === "existing" && !selectedGangId) e.gang = "Please choose a gang, or create a new one";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -69,7 +88,18 @@ function CreateTrip({ setPage, addTrip, userProfile, teams = [], addTeam }) {
 
   const handleSave = () => {
     if (!validate()) return;
-    addTrip({ title: tripName, members: members.length, memberList: members, total: "0", date: displayDate, location, creator: creatorName || "" });
+
+    let gangId = selectedGangId;
+    if (gangMode === "new") {
+      const name = newGangName.trim() || `${tripName.trim()} Gang`;
+      gangId = createGang ? createGang(name, members) : null;
+    }
+    if (!gangId) {
+      setErrors((e) => ({ ...e, gang: "Couldn't set up the gang — try again" }));
+      return;
+    }
+
+    addTrip({ title: tripName, members: members.length, memberList: members, total: "0", date: displayDate, location, creator: creatorId || "", gangId });
     setPage("home");
   };
 
@@ -87,7 +117,7 @@ function CreateTrip({ setPage, addTrip, userProfile, teams = [], addTeam }) {
       <div className="ns-card">
         <div className="ns-input-group">
           <label className="ns-input-label">Trip Name</label>
-          <input className="ns-input" placeholder="NCT127 Bangkok Concert" value={tripName} onChange={(e) => setTripName(e.target.value)} />
+          <input className="ns-input" placeholder="NCT127 Bangkok Concert" value={tripName} onChange={(e) => setTripName(e.target.value)} maxLength={60} />
           {errors.tripName && <p className="ns-error">{errors.tripName}</p>}
         </div>
 
@@ -111,28 +141,80 @@ function CreateTrip({ setPage, addTrip, userProfile, teams = [], addTeam }) {
         </div>
       </div>
 
-      {/* ── Saved teams — reuse a member list instead of retyping it ── */}
-      {teams.length > 0 && (
-        <div className="ns-card">
-          <label className="ns-input-label">Use a Saved Team</label>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-            {teams.map((team) => (
-              <button
-                key={team.id}
-                type="button"
-                onClick={() => applyTeam(team)}
-                style={{
-                  padding: "7px 14px", borderRadius: 100, cursor: "pointer",
-                  background: "var(--ns-card2)", border: "1px solid var(--ns-border)",
-                  color: "var(--ns-text2)", fontSize: 12, fontWeight: 600,
-                }}
-              >
-                👥 {team.name} ({team.memberList.length})
-              </button>
-            ))}
-          </div>
+      {/* ── Gang — which persistent group owns this trip's rewards/points.
+          Picking an existing one means points earned here add to the
+          same pool as this gang's other trips, instead of starting from
+          zero. ── */}
+      <div className="ns-card">
+        <label className="ns-input-label">Gang</label>
+        <div style={{ fontSize: 12, color: "var(--ns-muted)", marginBottom: 10, marginTop: -4 }}>
+          Rewards and points belong to the gang, not just this one trip.
         </div>
-      )}
+
+        {gangs.length > 0 && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <button
+              type="button"
+              onClick={() => setGangMode("existing")}
+              style={{
+                flex: 1, padding: "9px 0", borderRadius: 10, cursor: "pointer",
+                background: gangMode === "existing" ? "rgba(0,255,133,0.15)" : "var(--ns-card2)",
+                border: `1px solid ${gangMode === "existing" ? "rgba(0,255,133,0.35)" : "var(--ns-border)"}`,
+                color: gangMode === "existing" ? "var(--ns-g)" : "var(--ns-text2)",
+                fontSize: 13, fontWeight: 700,
+              }}
+            >
+              Use Existing
+            </button>
+            <button
+              type="button"
+              onClick={() => setGangMode("new")}
+              style={{
+                flex: 1, padding: "9px 0", borderRadius: 10, cursor: "pointer",
+                background: gangMode === "new" ? "rgba(0,255,133,0.15)" : "var(--ns-card2)",
+                border: `1px solid ${gangMode === "new" ? "rgba(0,255,133,0.35)" : "var(--ns-border)"}`,
+                color: gangMode === "new" ? "var(--ns-g)" : "var(--ns-text2)",
+                fontSize: 13, fontWeight: 700,
+              }}
+            >
+              Create New
+            </button>
+          </div>
+        )}
+
+        {gangMode === "existing" ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {gangs.map((gang) => {
+              const memberCount = gang.members ? Object.keys(gang.members).length : 0;
+              const isSelected = selectedGangId === gang.id;
+              return (
+                <button
+                  key={gang.id}
+                  type="button"
+                  onClick={() => applyGang(gang)}
+                  style={{
+                    padding: "7px 14px", borderRadius: 100, cursor: "pointer",
+                    background: isSelected ? "rgba(0,255,133,0.15)" : "var(--ns-card2)",
+                    border: `1px solid ${isSelected ? "rgba(0,255,133,0.35)" : "var(--ns-border)"}`,
+                    color: isSelected ? "var(--ns-g)" : "var(--ns-text2)", fontSize: 12, fontWeight: 600,
+                  }}
+                >
+                  👥 {gang.name} ({memberCount})
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <input
+            className="ns-input"
+            placeholder={tripName ? `${tripName} Gang` : "e.g. Bangkok Gang"}
+            value={newGangName}
+            onChange={(e) => setNewGangName(e.target.value)}
+            maxLength={40}
+          />
+        )}
+        {errors.gang && <p className="ns-error">{errors.gang}</p>}
+      </div>
 
       {/* ── Members ── */}
       <div className="ns-card">
@@ -148,6 +230,7 @@ function CreateTrip({ setPage, addTrip, userProfile, teams = [], addTeam }) {
             onChange={(e) => setMemberInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addMember()}
             style={{ flex: 1 }}
+            maxLength={40}
           />
           <button
             type="button"
@@ -165,34 +248,21 @@ function CreateTrip({ setPage, addTrip, userProfile, teams = [], addTeam }) {
         {/* Member chips */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: members.length > 0 ? 12 : 0 }}>
           {members.map((m) => (
-            <div key={m} style={{
+            <div key={m.id} style={{
               display: "flex", alignItems: "center", gap: 6,
               padding: "6px 12px", borderRadius: 100,
               background: "rgba(0,255,133,0.1)", border: "1px solid rgba(0,255,133,0.25)",
               fontSize: 13, fontWeight: 600, color: "var(--ns-g)",
             }}>
-              {m}{m === creatorName ? " (you)" : ""}
+              {m.name}{m.id === creatorId ? " (you)" : ""}
               <button
                 type="button"
-                onClick={() => removeMember(m)}
+                onClick={() => removeMember(m.id)}
                 style={{ background: "none", border: "none", color: "var(--ns-r)", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0 }}
               >×</button>
             </div>
           ))}
         </div>
-
-        {members.length > 0 && (
-          <button
-            type="button"
-            onClick={saveAsTeam}
-            style={{
-              background: "none", border: "none", color: "var(--ns-muted)",
-              fontSize: 12, cursor: "pointer", padding: 0, textDecoration: "underline",
-            }}
-          >
-            💾 Save these {members.length} people as a team
-          </button>
-        )}
       </div>
 
       {/* ── Preview ── */}

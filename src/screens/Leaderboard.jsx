@@ -11,8 +11,20 @@ const DEFAULT_GANG_REWARDS = [
   { threshold: 500, label: "Trip MVP Crown 👑", desc: "Ultimate bragging rights for the trip" },
 ];
 
-function Leaderboard({ setPage, authReady, currentTripId, currentTrip, userProfile, tripMembers = [], tripMilestones = [], addGangMilestone, deleteGangMilestone }) {
-  const currentUser = userProfile?.name || "NongTaeyoung";
+function Leaderboard({ setPage, authReady, currentGangId, gangName, gangCreatorId, currentTrip, userProfile, tripMembers = [], gangMembers = [], tripMilestones = [], addGangMilestone, deleteGangMilestone }) {
+  const currentUserId = userProfile?.id || null;
+  // Ranking is gang-wide now, not just this trip's roster — someone can
+  // be in the gang (and show up here) without having joined this
+  // particular trip. Falls back to tripMembers for the very first paint,
+  // before the gang's own member list has loaded in.
+  const memberPool = gangMembers.length > 0 ? gangMembers : tripMembers;
+  // Points (scores) are keyed by member id, never by name, so a rename
+  // can never split someone's history into a second ranking entry. Their
+  // points stay on the board even after they're removed from the gang
+  // (removing someone doesn't erase their history), so the fallback here
+  // matters: without it, a removed member's row would show their raw
+  // internal id instead of a readable label.
+  const nameOf = (id) => memberPool.find((m) => m.id === id)?.name || (id ? "Former member" : "");
   const [scores, setScores] = useState({});
   const [showMilestoneForm, setShowMilestoneForm] = useState(false);
   const [newThreshold, setNewThreshold] = useState("");
@@ -20,34 +32,39 @@ function Leaderboard({ setPage, authReady, currentTripId, currentTrip, userProfi
   const [newDesc, setNewDesc] = useState("");
   const [showMenu, setShowMenu] = useState(false);
 
-  const isCreator = !!currentTrip?.creator && currentTrip.creator === currentUser;
+  // Gang-level permission now — rewards/milestones belong to the gang,
+  // which can span trips with different creators, so the gatekeeper is
+  // whoever created the GANG, not necessarily this one trip.
+  const isCreator = !!gangCreatorId && gangCreatorId === currentUserId;
 
   // Ranking and the Gang Reward milestone both read from
-  // memberLifetimePoints — the pool that only ever goes up. Redeeming a
-  // reward spends from a *different* pool (Available Points, tracked in
-  // Rewards.jsx), so cashing in a reward never knocks anyone's rank down.
+  // memberLifetimePoints — the pool that only ever goes up, shared
+  // across every trip under this gang. Redeeming a reward spends from a
+  // *different* pool (Reward Points, tracked in Rewards.jsx), so cashing
+  // in a reward never knocks anyone's rank down.
   useEffect(() => {
-    if (!authReady || !currentTripId) {
+    if (!authReady || !currentGangId) {
       setScores({});
       return;
     }
-    const unsub = onValue(ref(db, `trips/${currentTripId}/memberLifetimePoints`), (snap) => {
+    const unsub = onValue(ref(db, `gangs/${currentGangId}/memberLifetimePoints`), (snap) => {
       setScores(snap.val() || {});
     });
     return () => unsub();
-  }, [authReady, currentTripId]);
+  }, [authReady, currentGangId]);
 
-  const allNames = Array.from(new Set([
-    ...tripMembers,
+  const allIds = Array.from(new Set([
+    ...memberPool.map((m) => m.id),
     ...Object.keys(scores),
-    currentUser,
+    ...(currentUserId ? [currentUserId] : []),
   ]));
 
-  const allUsers = allNames
-    .map((name) => ({
-      name,
-      points: scores[name] || 0,
-      isMe: name === currentUser,
+  const allUsers = allIds
+    .map((id) => ({
+      id,
+      name: nameOf(id),
+      points: scores[id] || 0,
+      isMe: id === currentUserId,
     }))
     .sort((a, b) => b.points - a.points);
 
@@ -84,20 +101,22 @@ function Leaderboard({ setPage, authReady, currentTripId, currentTrip, userProfi
 
   const medals = ["👑", "🥈", "🥉"];
 
-  // Reset clears this trip's game state (both lifetime rank points and
-  // whatever's sitting in the available/spendable pool). Global XP
-  // (userPoints, shown on My Points) is never touched by this.
+  // Reset clears this GANG's game state (both lifetime rank points and
+  // whatever's sitting in the spendable Reward Points pool) — every trip
+  // under this gang shares the same pools, so this resets all of them at
+  // once, not just the one you're looking at. Global XP (userPoints,
+  // shown on My Points) is never touched by this.
   const handleReset = () => {
-    if (!authReady || !currentTripId) return;
-    if (!window.confirm("Reset คะแนนของทริปนี้ทุกคนเป็น 0 ใช่ไหม?")) return;
+    if (!authReady || !currentGangId) return;
+    if (!window.confirm("Reset คะแนนของแก๊งนี้ทุกคนเป็น 0 ใช่ไหม? (มีผลกับทุกทริปในแก๊งนี้)")) return;
     setShowMenu(false);
     const resetObj = {};
-    allUsers.forEach((u) => { resetObj[u.name] = 0; });
-    set(ref(db, `trips/${currentTripId}/memberLifetimePoints`), resetObj);
-    set(ref(db, `trips/${currentTripId}/memberPoints`), resetObj);
+    allUsers.forEach((u) => { resetObj[u.id] = 0; });
+    set(ref(db, `gangs/${currentGangId}/memberLifetimePoints`), resetObj);
+    set(ref(db, `gangs/${currentGangId}/memberPoints`), resetObj);
   };
 
-  if (!currentTripId) {
+  if (!currentGangId) {
     return (
       <div className="ns-screen">
         <div className="ns-page-header">
@@ -117,14 +136,22 @@ function Leaderboard({ setPage, authReady, currentTripId, currentTrip, userProfi
       <div className="ns-page-header">
         <span className="ns-display">Leaderboard</span>
       </div>
+      {gangName && (
+        <div style={{ fontSize: 12, color: "var(--ns-muted)", marginTop: -10, marginBottom: 14 }}>
+          👥 {gangName} — shared across every trip in this gang
+        </div>
+      )}
 
       {/* Gang Reward progress */}
       <div className="ns-card" style={{
         background: "linear-gradient(135deg, color-mix(in srgb, var(--ns-g) 10%, transparent), color-mix(in srgb, var(--ns-g) 3%, transparent))",
         border: "1px solid color-mix(in srgb, var(--ns-g) 20%, transparent)", marginBottom: 16,
       }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "color-mix(in srgb, var(--ns-g) 70%, transparent)", marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "color-mix(in srgb, var(--ns-g) 70%, transparent)", marginBottom: 4 }}>
           🏆 Gang Reward
+        </div>
+        <div style={{ fontSize: 11, color: "var(--ns-muted)", marginBottom: 8 }}>
+          Unlocks when the whole gang's Gang Pts (below) add up to the target — redeeming a reward never lowers this.
         </div>
         {nextReward ? (
           <>
@@ -229,6 +256,20 @@ function Leaderboard({ setPage, authReady, currentTripId, currentTrip, userProfi
               boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
             }}
           >
+            {isCreator && (
+              <button
+                type="button"
+                onClick={() => { setShowMenu(false); setPage("gangsettings"); }}
+                style={{
+                  display: "block", width: "100%", textAlign: "left",
+                  padding: "10px 14px", background: "none", border: "none",
+                  borderBottom: "1px solid var(--ns-border)",
+                  color: "var(--ns-text2)", fontSize: 13, cursor: "pointer",
+                }}
+              >
+                ⚙️ Manage Gang
+              </button>
+            )}
             <button
               type="button"
               onClick={handleReset}
@@ -257,7 +298,7 @@ function Leaderboard({ setPage, authReady, currentTripId, currentTrip, userProfi
               // people tied for 2nd both get 🥈, not 🥈 and 🥉.
               const rank = ranks[userIndex];
               return (
-                <div key={user.name} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                <div key={user.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
                   <div style={{ fontSize: 24 }}>{medals[rank - 1] || "⭐"}</div>
                   <div style={{
                     width: 52, height: 52, borderRadius: "50%",
@@ -297,10 +338,13 @@ function Leaderboard({ setPage, authReady, currentTripId, currentTrip, userProfi
           </div>
 
           {/* Full list */}
-          <div className="ns-section-label">Rankings</div>
+          <div className="ns-section-label" style={{ marginBottom: 2 }}>Rankings</div>
+          <div style={{ fontSize: 11, color: "var(--ns-muted)", marginBottom: 10, marginTop: -4 }}>
+            Gang Pts = lifetime points earned in this trip. Different from your Reward Points balance (spendable, see My Points) — redeeming a reward never changes your rank here.
+          </div>
           {allUsers.map((user, index) => (
             <div
-              key={user.name}
+              key={user.id}
               className="ns-card"
               style={{
                 display: "flex", alignItems: "center", gap: 14, marginBottom: 10,

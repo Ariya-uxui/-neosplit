@@ -7,27 +7,48 @@ function Rewards({
   tripRewards = [],
   tripRedeems = [],
   currentTrip,
+  gangCreatorId,
   userProfile,
   requestRedeem,
   confirmRedeem,
+  deleteReward,
   setSelectedRedeem,
 }) {
   const [selectedReward, setSelectedReward] = useState(null);
   const [error, setError] = useState("");
 
-  const currentUserName = userProfile?.name;
-  const isCreator = !!currentTrip?.creator && currentTrip.creator === currentUserName;
+  const currentUserId = userProfile?.id;
+  // Rewards belong to the GANG now (can span several trips), so the
+  // gatekeeper is whoever created the gang, not necessarily this trip.
+  const isCreator = !!gangCreatorId && gangCreatorId === currentUserId;
 
   const selected = tripRewards.find((r) => r.id === selectedReward);
   const canAfford = selected ? userPoints >= selected.points : false;
 
+  // Redeem requests reference the requester by id (memberId) now; the
+  // memberName field on each request is just a display snapshot taken
+  // at request time, never used for identity.
   const myRequests = tripRedeems
-    .filter((r) => r.memberName === currentUserName)
+    .filter((r) => (r.memberId || r.memberName) === currentUserId)
     .sort((a, b) => (b.requestedAt || 0) - (a.requestedAt || 0));
 
   const pendingForCreator = tripRedeems
     .filter((r) => r.status === "Pending")
     .sort((a, b) => (a.requestedAt || 0) - (b.requestedAt || 0));
+
+  // Safe to delete even if people already redeemed it — every past
+  // request keeps its own name/icon/points snapshot (see App.jsx), so
+  // nothing on "My Redeem Requests" or "Pending Redemptions" breaks.
+  const handleDeleteReward = (reward, e) => {
+    e.stopPropagation();
+    const hasHistory = tripRedeems.some((r) => r.rewardId === reward.id);
+    const msg = hasHistory
+      ? `Delete "${reward.name}"? People have already redeemed it — their past requests stay on record, this just takes it off the list.`
+      : `Delete "${reward.name}"?`;
+    if (!window.confirm(msg)) return;
+    if (selectedReward === reward.id) setSelectedReward(null);
+    if (deleteReward) deleteReward(reward.id);
+  };
 
   const handleRedeem = () => {
     if (!selected) return;
@@ -67,6 +88,9 @@ function Rewards({
           🎁 Reward Points<br />
           <span style={{ fontSize: 15 }}>{userPoints} pts</span>
         </div>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--ns-muted)", marginTop: -8, marginBottom: 14 }}>
+        This balance is what gets spent below — separate from your Gang Pts rank (Leaderboard) and lifetime XP (My Points), which never go down.
       </div>
 
       {/* ── Creator: pending confirmations ── */}
@@ -139,6 +163,15 @@ function Rewards({
                   </span>
                 </div>
               </div>
+              {isCreator && (
+                <button
+                  type="button"
+                  onClick={(e) => handleDeleteReward(reward, e)}
+                  style={{ background: "none", border: "none", color: "var(--ns-r)", fontSize: 12, cursor: "pointer", padding: 4, flexShrink: 0 }}
+                >
+                  Delete
+                </button>
+              )}
               {isSelected && <span style={{ color: "var(--ns-g)", fontSize: 18, fontWeight: 800 }}>✓</span>}
             </div>
           );

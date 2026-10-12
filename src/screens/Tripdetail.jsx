@@ -2,7 +2,9 @@ import React from "react";
 import "../App.css";
 import ExpenseChart from "../components/ExpenseChart";
 
-function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense, deleteTrip, currentTrip, currentTripId, getInviteLink }) {
+function TripDetail({ setPage, tripBills = [], tripMembers = [], deleteExpense, startEditExpense, deleteTrip, currentTrip, currentTripId, getInviteLink }) {
+  // bill.paidBy stores a member id now, not a name.
+  const nameOf = (id) => tripMembers.find((m) => m.id === id)?.name || id || "";
   const total = tripBills.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
   const hasExpenses = tripBills.length > 0;
 
@@ -167,7 +169,7 @@ function TripDetail({ setPage, tripBills = [], deleteExpense, startEditExpense, 
               </div>
 
               <div style={{ fontSize: 12, color: "var(--ns-muted)", marginBottom: 6 }}>
-                Paid by {bill.paidBy} · {people} pax · {each} THB/person
+                Paid by {nameOf(bill.paidBy)} · {people} pax · {each} THB/person
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

@@ -4,6 +4,9 @@ import "../App.css";
 function Home({ setPage, tripBills = [], tripMembers = [], userProfile, trips = [], currentTripId, selectTrip, deleteTrip, openEditTrip }) {
   const [openMenuId, setOpenMenuId] = useState(null);
 
+  // tripMembers is [{id, name}] — bill.paidBy/sharedBy already store ids.
+  const nameOf = (id) => tripMembers.find((m) => m.id === id)?.name || id || "";
+
   const dashboard = useMemo(() => {
     const totalSpend = tripBills.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
     const pendingBills  = tripBills.filter((b) => b.status !== "Finished");
@@ -17,19 +20,22 @@ function Home({ setPage, tripBills = [], tripMembers = [], userProfile, trips = 
       paidMap[payer] = (paidMap[payer] || 0) + (Number(b.amount) || 0);
     });
 
-    const [topSpender, topSpenderAmount] =
+    const [topSpenderId, topSpenderAmount] =
       Object.entries(paidMap).sort((a, b) => b[1] - a[1])[0] || ["—", 0];
+    const topSpender = topSpenderId === "—" ? "—" : nameOf(topSpenderId);
 
-    const currentUser = userProfile?.name || tripMembers[0] || "You";
-    const yourPaid    = paidMap[currentUser] || 0;
+    const currentUserId = userProfile?.id || tripMembers[0]?.id || null;
+    const currentUserName = userProfile?.name || nameOf(currentUserId) || "You";
+    const yourPaid    = paidMap[currentUserId] || 0;
     let   yourShare   = 0;
 
+    const allMemberIds = tripMembers.map((m) => m.id);
     tripBills.forEach((b) => {
       const participants =
         b.sharedBy && b.sharedBy.length > 0
           ? b.sharedBy
-          : tripMembers.slice(0, Number(b.pax) || tripMembers.length);
-      if (participants.includes(currentUser)) {
+          : allMemberIds.slice(0, Number(b.pax) || allMemberIds.length);
+      if (currentUserId && participants.includes(currentUserId)) {
         yourShare += (Number(b.amount) || 0) / participants.length;
       }
     });
@@ -40,7 +46,7 @@ function Home({ setPage, tripBills = [], tripMembers = [], userProfile, trips = 
     return {
       totalSpend, pendingCount: pendingBills.length,
       finishedCount: finished, finished, progress,
-      topSpender, topSpenderAmount, yourBalance, recentBills, currentUser,
+      topSpender, topSpenderAmount, yourBalance, recentBills, currentUserName,
     };
   }, [tripBills, tripMembers, userProfile]);
 
@@ -58,7 +64,7 @@ function Home({ setPage, tripBills = [], tripMembers = [], userProfile, trips = 
         <button className="ns-avatar-btn" onClick={() => setPage("profile")}>
           {userProfile?.profileImage
             ? <img src={userProfile.profileImage} alt="profile" className="ns-avatar-img" />
-            : dashboard.currentUser.charAt(0).toUpperCase()
+            : dashboard.currentUserName.charAt(0).toUpperCase()
           }
         </button>
       </div>
@@ -79,8 +85,13 @@ function Home({ setPage, tripBills = [], tripMembers = [], userProfile, trips = 
       ) : (
         trips.map((trip) => {
           const isActive = trip.id === currentTripId;
-          const memberNames = Array.isArray(trip.memberList) && trip.memberList.length > 0
-            ? trip.memberList
+          // trip.memberList is a snapshot saved at trip-creation time —
+          // an array of { id, name } now (CreateTrip.jsx), though an
+          // older trip created before this refactor may still have it as
+          // plain name strings. Handle both so old trip cards don't
+          // render "[object Object]".
+          const memberNames = Array.isArray(trip.memberList)
+            ? trip.memberList.map((m) => (typeof m === "string" ? m : m?.name)).filter(Boolean)
             : [];
           const isMenuOpen = openMenuId === trip.id;
 
@@ -264,7 +275,7 @@ function Home({ setPage, tripBills = [], tripMembers = [], userProfile, trips = 
                 <div>
                   <div className="ns-bill-name">{bill.name}</div>
                   <div className="ns-bill-meta">
-                    Paid by {bill.paidBy} · {(bill.sharedBy?.length || bill.pax || 1)} people ·{" "}
+                    Paid by {nameOf(bill.paidBy)} · {(bill.sharedBy?.length || bill.pax || 1)} people ·{" "}
                     {Number(bill.amount || 0).toLocaleString()} THB
                   </div>
                 </div>

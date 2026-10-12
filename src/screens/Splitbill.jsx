@@ -11,6 +11,11 @@ function SplitBill({
   // Settlement to tweak it) instead of starting blank every time.
   const [customAmounts, setCustomAmounts] = useState(() => customSplit || {});
 
+  // tripMembers is [{id, name}] — bill.paidBy/sharedBy already store ids,
+  // and customSplit is keyed by id too; this is the one place names get
+  // resolved, for display only.
+  const nameOf = (id) => tripMembers.find((m) => m.id === id)?.name || id || "";
+
   const pendingBills = tripBills.filter((b) => b.status !== "Finished");
   const totalAmount = tripBills.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
   // Settlement only ever works over PENDING bills, so Custom Split has
@@ -39,8 +44,9 @@ function SplitBill({
 
   const equalPerPerson = tripMembers.length > 0 ? totalAmount / tripMembers.length : totalAmount;
 
+  const allMemberIds = tripMembers.map((m) => m.id);
   const selectedMembers = Array.from(
-    new Set(selectedBills.flatMap((b) => (b.sharedBy?.length ? b.sharedBy : tripMembers)))
+    new Set(selectedBills.flatMap((b) => (b.sharedBy?.length ? b.sharedBy : allMemberIds)))
   );
   const selectedEqualPerPerson = selectedMembers.length > 0 ? selectedTotal / selectedMembers.length : selectedTotal;
 
@@ -48,7 +54,7 @@ function SplitBill({
   // to the bill?" instead of letting someone continue with ฿200
   // unaccounted for and finding out only in Settlement.
   const assignedTotal = tripMembers.reduce(
-    (sum, m) => sum + (Number(customAmounts[m]) || 0), 0
+    (sum, m) => sum + (Number(customAmounts[m.id]) || 0), 0
   );
   const remaining = Number((pendingTotal - assignedTotal).toFixed(2));
   const isBalanced = Math.abs(remaining) < 0.01;
@@ -180,7 +186,7 @@ function SplitBill({
                   <span style={{ fontSize: 18 }}>{getCategoryIcon(bill.category)}</span>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ns-text)" }}>{bill.name}</div>
-                    <div style={{ fontSize: 11, color: "var(--ns-muted)" }}>Paid by {bill.paidBy} · {people} pax</div>
+                    <div style={{ fontSize: 11, color: "var(--ns-muted)" }}>Paid by {nameOf(bill.paidBy)} · {people} pax</div>
                   </div>
                   <div style={{ fontFamily: "var(--ns-syne)", fontSize: 15, fontWeight: 800, color: "var(--ns-y)" }}>
                     {Number(bill.amount).toLocaleString()}
@@ -221,7 +227,7 @@ function SplitBill({
                 <div style={{ fontSize: 14, color: "var(--ns-muted)", marginTop: 6 }}>THB / person</div>
                 {selectedMembers.length > 0 && (
                   <div style={{ fontSize: 12, color: "var(--ns-muted)", marginTop: 8 }}>
-                    {selectedMembers.join(" · ")}
+                    {selectedMembers.map(nameOf).join(" · ")}
                   </div>
                 )}
               </div>
@@ -247,7 +253,7 @@ function SplitBill({
           <div style={{ fontSize: 14, color: "var(--ns-muted)", marginTop: 6 }}>THB / person</div>
           {tripMembers.length > 0 && (
             <div style={{ fontSize: 12, color: "var(--ns-muted)", marginTop: 8 }}>
-              {tripMembers.join(" · ")}
+              {tripMembers.map((m) => m.name).join(" · ")}
             </div>
           )}
         </div>
@@ -262,21 +268,21 @@ function SplitBill({
             exact amounts instead of splitting each bill evenly.
           </div>
           {tripMembers.map((member) => (
-            <div key={member} className="ns-card" style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+            <div key={member.id} className="ns-card" style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
               <div style={{
                 width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
                 background: "color-mix(in srgb, var(--ns-g) 12%, transparent)", display: "flex", alignItems: "center",
                 justifyContent: "center", fontFamily: "var(--ns-syne)", fontWeight: 800,
                 fontSize: 16, color: "var(--ns-g)",
               }}>
-                {member.charAt(0).toUpperCase()}
+                {member.name.charAt(0).toUpperCase()}
               </div>
-              <div style={{ flex: 1, fontSize: 14, fontWeight: 600, color: "var(--ns-text)" }}>{member}</div>
+              <div style={{ flex: 1, fontSize: 14, fontWeight: 600, color: "var(--ns-text)" }}>{member.name}</div>
               <input
                 type="number"
                 placeholder="0"
-                value={customAmounts[member] || ""}
-                onChange={(e) => setCustomAmounts((prev) => ({ ...prev, [member]: e.target.value }))}
+                value={customAmounts[member.id] || ""}
+                onChange={(e) => setCustomAmounts((prev) => ({ ...prev, [member.id]: e.target.value }))}
                 style={{
                   width: 90, padding: "8px 10px", borderRadius: 10,
                   background: "var(--ns-card2)", border: "1px solid var(--ns-border)",
