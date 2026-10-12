@@ -95,7 +95,7 @@ const SKIP_LINE = [
   // order-close timestamps on bar & restaurant tabs), e.g. "10-10-2569
   // 23:38" — without this, the trailing minutes/seconds can get mistaken
   // for a price by Pass 1 below.
-  /^\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/,
+  /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}/,
 ];
 
 const isSkipLine = (line) => SKIP_LINE.some((re) => re.test(line));
