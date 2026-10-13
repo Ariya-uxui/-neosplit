@@ -678,9 +678,27 @@ function ScanReceipt({ setPage, tripMembers = [], userProfile, addExpense }) {
           })()}
 
           {rawText && (
-            <details className="ns-card" style={{ marginBottom: 14, padding: 14 }}>
-              <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 700, color: "var(--ns-muted)" }}>
-                🔍 Debug: show raw scanned text
+            // Was a tiny gray "Debug" link — easy to miss and sounds like a
+            // dev-only tool. This is actually the one thing a real user needs
+            // when an item name/price above got OCR'd wrong: the original
+            // scanned text to compare against. Made it an actual warning-
+            // colored card (same visual language as the total-mismatch card
+            // above) with copy that says WHY to open it, not just WHAT it is.
+            <details className="ns-card" style={{
+              marginBottom: 14, padding: 14,
+              border: "1px solid color-mix(in srgb, var(--ns-y) 35%, transparent)",
+              background: "color-mix(in srgb, var(--ns-y) 6%, transparent)",
+            }}>
+              <summary style={{ cursor: "pointer", display: "flex", alignItems: "flex-start", gap: 10 }}>
+                <span style={{ fontSize: 20, lineHeight: 1 }}>📄</span>
+                <span>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ns-y)" }}>
+                    Item name or price look wrong above?
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--ns-muted)", marginTop: 2, fontWeight: 400 }}>
+                    Tap to see exactly what the scanner read off the receipt
+                  </div>
+                </span>
               </summary>
               <pre style={{
                 marginTop: 10, fontSize: 11, color: "var(--ns-text)", whiteSpace: "pre-wrap",
